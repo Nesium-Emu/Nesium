@@ -1,0 +1,10 @@
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+    "-L", "native=C:/nesium/build/_deps/sdl2-build/Release",
+    "-L", "native=C:/nesium/build/_deps/sdl2-build",
+    "-C", "link-args=/DEFAULTLIB:advapi32.lib",
+]
+
+[env]
+SDL2_DIR = "C:/nesium/build/_deps/sdl2-src"
+
