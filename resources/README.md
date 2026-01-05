@@ -23,8 +23,25 @@ The SVG files can be used for:
 - Website/branding
 - Social media
 
-To convert SVG to PNG, you can use tools like:
-- Inkscape: `inkscape --export-png=logo.png --export-width=512 nesium-logo.svg`
-- ImageMagick: `convert -background none -density 300 nesium-logo.svg logo.png`
-- Online converters
+## Creating PNG Icon for Application
+
+The application will automatically load `resources/nesium-icon.png` if it exists. To create it:
+
+### Using Inkscape:
+```bash
+inkscape --export-png=nesium-icon.png --export-width=64 --export-height=64 nesium-logo-simple.svg
+```
+
+### Using ImageMagick:
+```bash
+convert -background none -density 300 -resize 64x64 nesium-logo-simple.svg nesium-icon.png
+```
+
+### Recommended Sizes:
+- **64x64** - Standard application icon (recommended for `nesium-icon.png`)
+- **32x32** - Small icon
+- **128x128** - High DPI
+- **256x256** - Very high DPI
+
+The application will fall back to a programmatically generated icon if the PNG file is not found.
 

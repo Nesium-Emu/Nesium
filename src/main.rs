@@ -14,6 +14,7 @@ mod ui;
 
 use clap::Parser;
 use std::path::PathBuf;
+use std::fs;
 
 #[derive(Parser)]
 #[command(name = "nesium")]
@@ -87,48 +88,108 @@ fn main() -> eframe::Result<()> {
     )
 }
 
-/// Load the application icon
+/// Load the application icon from logo file or generate fallback
 fn load_icon() -> egui::IconData {
-    // Simple 32x32 NES controller-inspired icon
-    let size = 32;
+    // Try to load from PNG file first (preferred)
+    if let Ok(icon) = load_icon_from_file() {
+        return icon;
+    }
+    
+    // Fallback to programmatically generated icon
+    generate_icon_fallback()
+}
+
+/// Try to load icon from PNG file in resources directory
+fn load_icon_from_file() -> Result<egui::IconData, Box<dyn std::error::Error>> {
+    // Try multiple possible paths
+    let paths = [
+        "resources/nesium-icon.png",
+        "resources/nesium-logo-simple.png",
+        "../resources/nesium-icon.png",
+        "./resources/nesium-icon.png",
+    ];
+    
+    for path in &paths {
+        if let Ok(data) = fs::read(path) {
+            if let Ok(img) = image::load_from_memory(&data) {
+                let rgba = img.to_rgba8();
+                let (width, height) = rgba.dimensions();
+                let pixels = rgba.into_raw();
+                
+                log::info!("Loaded icon from: {}", path);
+                return Ok(egui::IconData {
+                    rgba: pixels,
+                    width,
+                    height,
+                });
+            }
+        }
+    }
+    
+    Err("Icon file not found".into())
+}
+
+/// Generate fallback icon programmatically (based on logo design)
+fn generate_icon_fallback() -> egui::IconData {
+    let size = 64; // Higher resolution for better quality
     let mut rgba = vec![0u8; size * size * 4];
     
-    // Draw a simple pixel art controller icon
+    // Draw icon based on logo design - NES controller with NESIUM styling
     for y in 0..size {
         for x in 0..size {
             let i = (y * size + x) * 4;
             
-            // Background - dark
-            let (r, g, b, a) = if x >= 4 && x < 28 && y >= 8 && y < 24 {
-                // Controller body
-                if y >= 10 && y < 22 && x >= 6 && x < 26 {
-                    // Inner body - lighter
-                    (60, 60, 70, 255)
+            // Background gradient (dark blue-gray)
+            let bg_factor = (x as f32 / size as f32) * 0.3 + 0.7;
+            let (r, g, b, a) = if x >= 8 && x < size - 8 && y >= 16 && y < size - 16 {
+                // Controller body area
+                if x >= 12 && x < size - 12 && y >= 20 && y < size - 20 {
+                    // Inner body
+                    (42, 42, 52, 255)
                 } else {
-                    // Border
-                    (40, 40, 50, 255)
+                    // Border (NES blue)
+                    (26, 26, 46, 255)
                 }
-            } else if x >= 8 && x < 12 && y >= 12 && y < 16 {
-                // D-pad up
-                (100, 180, 255, 255)
-            } else if x >= 8 && x < 12 && y >= 18 && y < 22 {
-                // D-pad down  
-                (100, 180, 255, 255)
-            } else if x >= 5 && x < 9 && y >= 15 && y < 19 {
-                // D-pad left
-                (100, 180, 255, 255)
-            } else if x >= 11 && x < 15 && y >= 15 && y < 19 {
-                // D-pad right
-                (100, 180, 255, 255)
-            } else if x >= 20 && x < 24 && y >= 13 && y < 17 {
-                // A button
-                (255, 100, 100, 255)
-            } else if x >= 23 && x < 27 && y >= 16 && y < 20 {
-                // B button
-                (255, 200, 100, 255)
+            } else if x >= 20 && x < 36 && y >= 24 && y < 40 {
+                // D-pad area
+                let dpad_x = x - 20;
+                let dpad_y = y - 24;
+                if (dpad_x >= 6 && dpad_x < 10 && dpad_y < 16) || // Up
+                   (dpad_x >= 6 && dpad_x < 10 && dpad_y >= 12 && dpad_y < 16) || // Down
+                   (dpad_x < 4 && dpad_y >= 6 && dpad_y < 10) || // Left
+                   (dpad_x >= 12 && dpad_x < 16 && dpad_y >= 6 && dpad_y < 10) { // Right
+                    (100, 180, 255, 255) // NES blue
+                } else if dpad_x >= 4 && dpad_x < 12 && dpad_y >= 4 && dpad_y < 12 {
+                    (100, 180, 255, 200) // Center (lighter)
+                } else {
+                    (0, 0, 0, 0) // Transparent
+                }
+            } else if (x - 48).pow(2) + (y - 28).pow(2) <= 64 {
+                // A button (red circle)
+                let dist = ((x - 48) as f32).powi(2) + ((y - 28) as f32).powi(2);
+                if dist <= 36.0 {
+                    (255, 100, 100, 255) // Red
+                } else if dist <= 64.0 {
+                    (255, 120, 120, 200) // Lighter red border
+                } else {
+                    (0, 0, 0, 0)
+                }
+            } else if (x - 56).pow(2) + (y - 36).pow(2) <= 64 {
+                // B button (orange circle)
+                let dist = ((x - 56) as f32).powi(2) + ((y - 36) as f32).powi(2);
+                if dist <= 36.0 {
+                    (255, 200, 100, 255) // Orange
+                } else if dist <= 64.0 {
+                    (255, 220, 120, 200) // Lighter orange border
+                } else {
+                    (0, 0, 0, 0)
+                }
             } else {
-                // Transparent
-                (0, 0, 0, 0)
+                // Background gradient
+                let r = (26.0 * bg_factor) as u8;
+                let g = (30.0 * bg_factor) as u8;
+                let b = (46.0 * bg_factor) as u8;
+                (r, g, b, 255)
             };
             
             rgba[i] = r;
@@ -138,6 +199,7 @@ fn load_icon() -> egui::IconData {
         }
     }
     
+    log::debug!("Generated fallback icon programmatically");
     egui::IconData {
         rgba,
         width: size as u32,
