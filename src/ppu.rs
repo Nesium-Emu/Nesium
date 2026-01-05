@@ -514,20 +514,20 @@ impl Ppu {
                 }
                 
                 // Increment Y scroll at cycle 256 - only when rendering is enabled
-                if self.cycle == 256 && (self.mask & 0x18) != 0 {
-                    self.increment_y();
-                }
-            } else if self.cycle == 257 {
-                // Only copy X scroll when rendering is enabled
+            } else if self.cycle == 258 {
+                // Copy X scroll at cycle 258 (VISIBLE_DOTS + 2) - matches C reference
                 if (self.mask & 0x18) != 0 {
                     self.copy_x();
                 }
             } else if self.cycle >= 280 && self.cycle <= 304 {
-                // Only copy Y scroll when rendering is enabled
+                // Copy Y scroll when rendering is enabled
                 if (self.mask & 0x18) != 0 {
                     self.copy_y();
                 }
-            } else if self.cycle >= 321 && self.cycle <= 336 {
+            }
+            // No sprite evaluation on pre-render scanline - matches C reference
+            // The first evaluation happens on scanline 0 at cycle 320
+            if self.cycle >= 321 && self.cycle <= 336 {
                 // Background tile fetching for next scanline
                 if (self.mask & 0x08) != 0 {
                     let phase = (self.cycle - 1) % 8;
@@ -545,17 +545,6 @@ impl Ppu {
         }
         // Visible scanlines (0-239)
         else if self.scanline >= 0 && self.scanline < 240 {
-            // Clear secondary OAM at cycle 1
-            if self.cycle == 1 {
-                self.secondary_oam = [0xFF; 0x20]; // Clear secondary OAM
-                self.sprite_count = 0;
-            }
-            
-            // Sprite evaluation (cycles 65-256)
-            if self.cycle >= 65 && self.cycle <= 256 {
-                self.evaluate_sprites_cycle();
-            }
-            
             // Render visible pixels (cycles 1-256)
             if self.cycle >= 1 && self.cycle <= 256 {
                 // Render pixel (matching C reference: reads tile data on-the-fly)
@@ -575,12 +564,11 @@ impl Ppu {
                     }
                 }
                 
-                // Increment vram address when fine_x wraps (matching C reference)
-                // This happens after rendering the pixel
-                if (self.mask & 0x08) != 0 && x < 256 {
+                // Increment coarse X when fine_x wraps (matching C reference)
+                // C code: if(fine_x == 7) { if((ppu->v & COARSE_X) == 31) {...} else ppu->v++; }
+                if (self.mask & 0x08) != 0 {
                     let fine_x = ((self.fine_x as u32 + x) % 8) as u8;
                     if fine_x == 7 {
-                        // Increment coarse X (matching C code: if(fine_x == 7))
                         if (self.vram_addr & 0x001F) == 0x001F {
                             // Wrap to next nametable horizontally
                             self.vram_addr &= !0x001F;
@@ -594,20 +582,17 @@ impl Ppu {
             // Increment Y scroll (cycle 257 = VISIBLE_DOTS + 1) - matching C reference
             else if self.cycle == 257 {
                 if (self.mask & 0x08) != 0 {
-                    // Increment Y scroll (matching C code: if(ppu->dots == VISIBLE_DOTS + 1 && ppu->mask & SHOW_BG))
+                    // C code: if((ppu->v & FINE_Y) != FINE_Y) ppu->v += 0x1000;
                     if (self.vram_addr & 0x7000) != 0x7000 {
-                        // Increment fine Y
                         self.vram_addr += 0x1000;
                     } else {
-                        // Wrap fine Y and increment coarse Y
                         self.vram_addr &= !0x7000;
                         let mut coarse_y = (self.vram_addr & 0x03E0) >> 5;
                         if coarse_y == 29 {
                             coarse_y = 0;
-                            // Switch vertical nametable
-                            self.vram_addr ^= 0x0800;
+                            self.vram_addr ^= 0x0800; // Switch vertical nametable
                         } else if coarse_y == 31 {
-                            coarse_y = 0;
+                            coarse_y = 0; // Nametable not switched
                         } else {
                             coarse_y += 1;
                         }
@@ -618,25 +603,19 @@ impl Ppu {
             // Copy X scroll (cycle 258 = VISIBLE_DOTS + 2) - matching C reference
             else if self.cycle == 258 {
                 if (self.mask & 0x18) != 0 {
-                    // Copy X scroll (matching C code: else if(ppu->dots == VISIBLE_DOTS + 2 && (ppu->mask & RENDER_ENABLED)))
                     self.copy_x();
                 }
             }
-            // Sprite tile fetching (cycles 257-320)
-            else if self.cycle >= 257 && self.cycle <= 320 {
-                // Sprite fetching: 8 cycles per sprite, max 8 sprites
-                let sprite_cycle = self.cycle - 257;
-                let sprite_idx = (sprite_cycle / 8) as usize;
-                let sprite_phase = sprite_cycle % 8;
-                
-                if sprite_idx < self.sprite_count as usize {
-                    if sprite_phase == 0 || sprite_phase == 4 {
-                        self.fetch_sprite_data(&mut chr_read, sprite_idx, sprite_phase);
-                    }
-                }
+            
+            // Sprite evaluation at cycle 320 (matching C reference EXACTLY)
+            // C code: diff = scanlines - OAM[Y], evaluates for CURRENT scanline
+            // This cache is used for rendering on the NEXT scanline
+            if self.cycle == 320 && (self.mask & 0x18) != 0 {
+                self.evaluate_sprites_for_scanline(self.scanline);
             }
+            
             // Background tile fetching for next scanline (cycles 321-336)
-            else if self.cycle >= 321 && self.cycle <= 336 {
+            if self.cycle >= 321 && self.cycle <= 336 {
                 if (self.mask & 0x08) != 0 {
                     let phase = (self.cycle - 1) % 8;
                     match phase {
@@ -646,7 +625,6 @@ impl Ppu {
                         7 => self.fetch_tile_data(&mut chr_read), // High pattern + reload
                         _ => {}
                     }
-                    // Shift after fetching
                     self.shift_registers();
                 }
             }
@@ -686,140 +664,176 @@ impl Ppu {
     }
 
     fn render_pixel(&mut self, chr_read: &mut impl FnMut(u16) -> u8) -> u8 {
-        // Render background pixel - match C reference implementation
-        // The C code reads tile data on-the-fly during rendering using read_vram
+        let x = (self.cycle - 1) as u32;
+        
+        // Calculate fine_x for this pixel - matches C reference: ((ppu->x + x) % 8)
+        // This combines the fine scroll register with the pixel position
+        let fine_x = ((self.fine_x as u32 + x) % 8) as u8;
+        
+        // Render background pixel - match C reference implementation exactly
+        // C code: render_background() in ppu.c
         let bg_pixel = if (self.mask & 0x08) != 0 {
-            let cycle_x = (self.cycle - 1) as u32;
-            let fine_x = ((self.fine_x as u32 + cycle_x) % 8) as u8;
+            // Check if left 8 pixels are masked (PPUMASK bit 1 = SHOW_BG_8)
+            // C code: if(!(ppu->mask & SHOW_BG_8) && x < 8) return 0;
+            let bg_left_masked = x < 8 && (self.mask & 0x02) == 0;
             
-            // Check if left 8 pixels are masked (PPUMASK bit 1)
-            // C code: !(ppu->mask & SHOW_BG_8) && x < 8
-            // SHOW_BG_8 is bit 1 (0x02), so we mask if bit 1 is 0 AND x < 8
-            let left_masked = cycle_x < 8 && (self.mask & 0x02) == 0;
-            
-            if !left_masked {
+            if !bg_left_masked {
                 // Match C reference: render_background function
-                // Calculate tile address: 0x2000 | (v & 0xFFF)
+                // tile_addr = 0x2000 | (ppu->v & 0xFFF)
                 let tile_addr = 0x2000 | (self.vram_addr & 0x0FFF);
                 
-                // Read tile ID from nametable (nametables are in VRAM, no CHR read needed)
-                let mut no_chr = None;
-                let tile_id = self.read_vram(tile_addr, &mut no_chr);
-                
-                // Debug logging for first few pixels
-                if self.scanline >= 0 && self.scanline < 3 && cycle_x < 10 {
-                    debug!("render_pixel: sl={}, cy={}, vram_addr=0x{:04X}, tile_addr=0x{:04X}, tile_id=0x{:02X}, mask=0x{:02X}", 
-                        self.scanline, cycle_x, self.vram_addr, tile_addr, tile_id, self.mask);
-                }
-                
-                // Calculate attribute address: 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)
+                // attr_addr = 0x23C0 | (ppu->v & 0x0C00) | ((ppu->v >> 4) & 0x38) | ((ppu->v >> 2) & 0x07)
                 let attr_addr = 0x23C0 | (self.vram_addr & 0x0C00) 
                     | ((self.vram_addr >> 4) & 0x38) 
                     | ((self.vram_addr >> 2) & 0x07);
                 
-                // Calculate pattern address: (tile_id * 16 + fine_y) | bg_table_base
+                // Read tile ID from nametable
+                let mut no_chr = None;
+                let tile_id = self.read_vram(tile_addr, &mut no_chr);
+                
+                // pattern_addr = (tile_id * 16 + ((ppu->v >> 12) & 0x7)) | ((ppu->ctrl & BG_TABLE) << 8)
                 let bg_pt_base = if (self.ctrl & 0x10) != 0 { 0x1000 } else { 0x0000 };
                 let fine_y = (self.vram_addr >> 12) & 0x07;
-                let pattern_addr = (tile_id as u16) * 16 + fine_y | bg_pt_base;
+                let pattern_addr = ((tile_id as u16) * 16 + fine_y) | bg_pt_base;
                 
-                // Read pattern bytes directly from CHR (pattern tables are 0x0000-0x1FFF)
-                // Pattern tables are read from cartridge, not VRAM
+                // Read pattern bytes directly from CHR
                 let pattern_low = chr_read(pattern_addr);
                 let pattern_high = chr_read(pattern_addr + 8);
                 
-                // Extract pixel bits (matching C code exactly: >> (7 ^ fine_x))
+                // Extract pixel bits - C code uses (7 ^ fine_x) which is same as (7 - fine_x) for 0-7
+                // palette_addr = (read_vram(ppu, pattern_addr) >> (7 ^ fine_x)) & 1
+                // palette_addr |= ((read_vram(ppu, pattern_addr + 8) >> (7 ^ fine_x)) & 1) << 1
                 let bit_pos = 7 ^ fine_x;
-                let palette_addr = ((pattern_low >> bit_pos) & 1) | (((pattern_high >> bit_pos) & 1) << 1);
+                let palette_idx = ((pattern_low >> bit_pos) & 1) | (((pattern_high >> bit_pos) & 1) << 1);
                 
-                if palette_addr != 0 {
-                    // Read attribute byte from VRAM (use read_vram, but pattern tables don't need chr_read)
+                if palette_idx != 0 {
+                    // Read attribute byte
                     let mut no_chr = None;
                     let attr = self.read_vram(attr_addr, &mut no_chr);
-                    // Attribute shift: ((v >> 4) & 4 | v & 2) - matches C code
+                    // C code: (attr >> ((ppu->v >> 4) & 4 | ppu->v & 2)) & 0x3
                     let shift = ((self.vram_addr >> 4) & 0x04) | (self.vram_addr & 0x02);
                     let attr_bits = ((attr >> shift) & 0x03) as u8;
-                    Some((attr_bits << 2) | palette_addr)
+                    Some((attr_bits << 2) | palette_idx)
                 } else {
                     None
                 }
             } else {
-                // Left 8 pixels masked
                 None
             }
         } else {
             None
         };
+        
+        // Check if sprites are masked in left 8 pixels (PPUMASK bit 2 = SHOW_SPRITE_8)
+        // C code: if(ppu->mask & SHOW_SPRITE && ((ppu->mask & SHOW_SPRITE_8) || x >= 8))
+        let sprite_left_masked = x < 8 && (self.mask & 0x04) == 0;
 
-        // Render sprite pixel
-        let sprite_pixel = if (self.mask & 0x10) != 0 {
+        // Render sprite pixel - matching C reference: render_sprites() in ppu.c
+        // Fetches pattern data on-the-fly like the C implementation
+        let mut sprite_result: Option<u8> = None;
+        let mut back_priority = false;
+        
+        if (self.mask & 0x10) != 0 && !sprite_left_masked {
+            let y = self.scanline as i32;
+            let sprite_height: i32 = if (self.ctrl & 0x20) != 0 { 16 } else { 8 };
+            
+            // Iterate through OAM directly like C reference (render_sprites fetches on-the-fly)
             for i in 0..self.sprite_count as usize {
-                let sprite_x = self.sprite_positions[i] as u32;
-                let cycle_x = (self.cycle - 1) as u32;
+                let oam_idx = (self.sprite_indices[i] as usize) * 4;
+                let tile_x = self.oam[oam_idx + 3] as i32;
+                let x_i32 = x as i32;
                 
-                if cycle_x >= sprite_x && cycle_x < sprite_x + 8 {
-                    let shift = 7 - (cycle_x - sprite_x);
-                    let pattern_bit = ((self.sprite_patterns_high[i] >> shift) & 0x01) << 1
-                        | ((self.sprite_patterns_low[i] >> shift) & 0x01);
-                    
-                    if pattern_bit != 0 {
-                        let attr = self.sprite_attributes[i];
-                        let priority = (attr & 0x20) == 0; // 0 = in front of bg
-                        let palette_idx = ((attr & 0x03) << 2) | pattern_bit;
-                        
-                        // Sprite 0 hit detection
-                        // Conditions:
-                        // 1. Must be sprite 0 (i == 0)
-                        // 2. Background pixel must be non-transparent
-                        // 3. Sprite pixel must be non-transparent (already checked)
-                        // 4. Must be during visible scanlines (0-239) - already true
-                        // 5. Must be during cycles 1-256 (not 257-340)
-                        // 6. Left 8 pixels can be masked by PPUMASK bit 2 (show left 8 pixels of bg/sprites)
-                        if i == 0 && bg_pixel.is_some() && cycle_x < 256 {
-                            // Check if left 8 pixels are masked (PPUMASK bits 1-2)
-                            // Bit 1: show left 8 pixels of background
-                            // Bit 2: show left 8 pixels of sprites
-                            let left_masked = cycle_x < 8 && ((self.mask & 0x06) != 0x06);
-                            if !left_masked && (self.mask & 0x18) == 0x18 {
-                                // Both background and sprites enabled
-                                self.status |= 0x40; // Set sprite 0 hit flag
-                            }
-                        }
-                        
-                        if bg_pixel.is_none() || priority {
-                            // Look up sprite palette (0x10-0x1F -> palette RAM 0x10-0x1F)
-                            let palette_addr = (0x10 | palette_idx) as usize;
-                            return self.palette[palette_addr] & 0x3F;
-                        }
-                    }
+                // C code: if (x - tile_x < 0 || x - tile_x >= 8) continue;
+                if x_i32 - tile_x < 0 || x_i32 - tile_x >= 8 {
+                    continue;
                 }
+                
+                let tile_id = self.oam[oam_idx + 1] as u16;
+                let tile_y = self.oam[oam_idx] as i32 + 1; // C code: tile_y = OAM[i] + 1
+                let attr = self.oam[oam_idx + 2];
+                
+                // Calculate x_off and y_off like C reference
+                let mut x_off = (x_i32 - tile_x) % 8;
+                let mut y_off = (y - tile_y) % sprite_height;
+                
+                // Handle flipping
+                if (attr & 0x40) == 0 { // Not horizontally flipped
+                    x_off ^= 7;
+                }
+                if (attr & 0x80) != 0 { // Vertically flipped
+                    y_off ^= sprite_height - 1;
+                }
+                
+                // Calculate tile address - matches C reference exactly
+                let tile_addr = if (self.ctrl & 0x20) != 0 {
+                    // 8x16 sprites: C code: y_off = y_off & 7 | ((y_off & 8) << 1);
+                    //               tile_addr = (tile >> 1) * 32 + y_off; tile_addr |= (tile & 1) << 12;
+                    let y_off_adj = (y_off & 7) | ((y_off & 8) << 1);
+                    let addr = ((tile_id >> 1) * 32 + y_off_adj as u16) | ((tile_id & 1) << 12);
+                    addr
+                } else {
+                    // 8x8 sprites: tile_addr = tile * 16 + y_off + (ctrl & SPRITE_TABLE ? 0x1000 : 0)
+                    let sprite_table = if (self.ctrl & 0x08) != 0 { 0x1000 } else { 0x0000 };
+                    tile_id * 16 + y_off as u16 + sprite_table
+                };
+                
+                // Read pattern data directly from CHR (on-the-fly like C reference)
+                let pattern_low = chr_read(tile_addr);
+                let pattern_high = chr_read(tile_addr + 8);
+                
+                // Extract pixel bits
+                let palette_addr = ((pattern_low >> x_off) & 1) | (((pattern_high >> x_off) & 1) << 1);
+                
+                if palette_addr == 0 {
+                    continue;
+                }
+                
+                // Calculate final palette index
+                let palette_idx = (0x10 | ((attr & 0x03) << 2) | palette_addr) as usize;
+                back_priority = (attr & 0x20) != 0; // bit 5 = behind background
+                
+                // Sprite 0 hit detection - matches C reference exactly:
+                // if (!(ppu->status & SPRITE_0_HIT) && (ppu->mask & SHOW_BG) && i == 0 && palette_addr && bg_addr && x < 255)
+                if (self.status & 0x40) == 0           // not already set
+                    && (self.mask & 0x08) != 0         // background enabled
+                    && self.sprite_indices[i] == 0    // sprite 0
+                    && bg_pixel.is_some()             // bg pixel opaque
+                    && x < 255                        // not at x=255
+                {
+                    self.status |= 0x40; // Set sprite 0 hit flag
+                    log::info!("Sprite 0 hit at scanline={}, x={}", self.scanline, x);
+                }
+                
+                // Return this sprite's palette color
+                sprite_result = Some(self.palette[palette_idx] & 0x3F);
+                break; // First opaque sprite wins (C code breaks here too)
             }
-            None
-        } else {
-            None
-        };
-
-        // Return final pixel color index (0-63) from palette RAM
-        if let Some(bg) = bg_pixel {
-            // Background palette: look up in palette RAM (indices 0x00-0x0F)
-            let palette_addr = bg as usize;
-            // Debug: log first few background pixels to see if they're being rendered
-            if self.scanline >= 0 && self.scanline < 3 && (self.cycle - 1) < 50 {
-                debug!("BG pixel: sl={}, cy={}, bg_idx={}, palette[{}]=0x{:02X}", 
-                    self.scanline, self.cycle - 1, bg, palette_addr, self.palette[palette_addr]);
-            }
-            self.palette[palette_addr] & 0x3F
-        } else if let Some(spr) = sprite_pixel {
-            // Sprite pixel already looked up in palette RAM
-            spr
+        }
+        
+        // Final pixel composition - matches C reference exactly:
+        // if((!palette_addr && palette_addr_sp) || (palette_addr && palette_addr_sp && !back_priority))
+        //     palette_addr = palette_addr_sp;
+        // palette_addr = ppu->palette[palette_addr];
+        
+        // Determine final color:
+        // - If no BG pixel and sprite exists: use sprite
+        // - If BG pixel and sprite exists and sprite in front: use sprite  
+        // - Otherwise: use BG (or backdrop if no BG)
+        let final_color = if bg_pixel.is_none() && sprite_result.is_some() {
+            // Background transparent, sprite opaque -> use sprite
+            sprite_result.unwrap()
+        } else if bg_pixel.is_some() && sprite_result.is_some() && !back_priority {
+            // Both opaque, sprite in front -> use sprite
+            sprite_result.unwrap()
+        } else if let Some(bg) = bg_pixel {
+            // Use background palette
+            self.palette[bg as usize] & 0x3F
         } else {
             // Universal background color (palette entry 0)
-            // Debug: log when we fall back to backdrop
-            if self.scanline >= 0 && self.scanline < 3 && (self.cycle - 1) < 50 {
-                debug!("Backdrop: sl={}, cy={}, palette[0]=0x{:02X}, shift_low=0x{:04X}, shift_high=0x{:04X}", 
-                    self.scanline, self.cycle - 1, self.palette[0], self.shift_pattern_low, self.shift_pattern_high);
-            }
             self.palette[0] & 0x3F
-        }
+        };
+        
+        final_color
     }
     
     pub fn build_framebuffer(&mut self, framebuffer: &mut [u8], _chr_read: impl Fn(u16) -> u8) {
@@ -969,29 +983,49 @@ impl Ppu {
             return;
         }
         
-        let sprite_y = (self.scanline as i16) - (self.secondary_oam[sprite_idx * 4] as i16);
+        let sprite_y_oam = self.secondary_oam[sprite_idx * 4] as i32;
         let sprite_tile = self.secondary_oam[sprite_idx * 4 + 1];
         let sprite_attr = self.secondary_oam[sprite_idx * 4 + 2];
         let flip_vertical = (sprite_attr & 0x80) != 0;
-        let sprite_row = if flip_vertical {
-            7 - (sprite_y % 8)
+        let is_8x16 = (self.ctrl & 0x20) != 0;
+        let sprite_height = if is_8x16 { 16 } else { 8 };
+        
+        // Calculate which row of the sprite we're rendering
+        let mut row = (self.scanline as i32) - sprite_y_oam;
+        
+        // Handle vertical flip
+        if flip_vertical {
+            row = sprite_height - 1 - row;
+        }
+        
+        // For 8x16 sprites, determine which tile (top or bottom half)
+        let (tile_index, row_in_tile) = if is_8x16 {
+            // 8x16 sprites: two 8x8 tiles stacked vertically
+            // tile_id bit 0 selects pattern table, bits 1-7 select tile pair
+            let base_tile = sprite_tile & 0xFE;
+            if row < 8 {
+                (base_tile, row as u16)
+            } else {
+                (base_tile | 0x01, (row - 8) as u16)
+            }
         } else {
-            sprite_y % 8
+            (sprite_tile, row as u16)
         };
         
-            match phase {
+        match phase {
             0 => {
                 // Fetch sprite pattern low (cycle 0 of sprite fetch)
-                // PPUCTRL bit 3 (0x08): 0 = sprites from $0000, 1 = sprites from $1000
-                let addr = if (self.ctrl & 0x20) != 0 {
-                    // 8x16 sprites: pattern table determined by bit 0 of tile ID
-                    ((sprite_tile as u16 & 0xFE) << 4) | ((sprite_tile as u16 & 0x01) << 12) | sprite_row as u16
+                let addr = if is_8x16 {
+                    // 8x16 sprites: pattern table determined by bit 0 of original tile ID
+                    let pattern_table = (sprite_tile as u16 & 0x01) << 12;
+                    pattern_table | ((tile_index as u16) << 4) | row_in_tile
                 } else {
                     // 8x8 sprites: pattern table from PPUCTRL bit 3
                     let sprite_pt_base = if (self.ctrl & 0x08) != 0 { 0x1000 } else { 0x0000 };
-                    sprite_pt_base | (sprite_tile as u16) << 4 | sprite_row as u16
+                    sprite_pt_base | ((tile_index as u16) << 4) | row_in_tile
                 };
                 let mut pattern = chr_read(addr);
+                // Horizontal flip
                 if (sprite_attr & 0x40) != 0 {
                     pattern = pattern.reverse_bits();
                 }
@@ -999,16 +1033,17 @@ impl Ppu {
             }
             4 => {
                 // Fetch sprite pattern high (cycle 4 of sprite fetch)
-                // PPUCTRL bit 3 (0x08): 0 = sprites from $0000, 1 = sprites from $1000
-                let addr = if (self.ctrl & 0x20) != 0 {
-                    // 8x16 sprites: pattern table determined by bit 0 of tile ID
-                    ((sprite_tile as u16 & 0xFE) << 4) | ((sprite_tile as u16 & 0x01) << 12) | sprite_row as u16 | 8
+                let addr = if is_8x16 {
+                    // 8x16 sprites: pattern table determined by bit 0 of original tile ID
+                    let pattern_table = (sprite_tile as u16 & 0x01) << 12;
+                    pattern_table | ((tile_index as u16) << 4) | row_in_tile | 8
                 } else {
                     // 8x8 sprites: pattern table from PPUCTRL bit 3
                     let sprite_pt_base = if (self.ctrl & 0x08) != 0 { 0x1000 } else { 0x0000 };
-                    sprite_pt_base | (sprite_tile as u16) << 4 | sprite_row as u16 | 8
+                    sprite_pt_base | ((tile_index as u16) << 4) | row_in_tile | 8
                 };
                 let mut pattern = chr_read(addr);
+                // Horizontal flip
                 if (sprite_attr & 0x40) != 0 {
                     pattern = pattern.reverse_bits();
                 }
@@ -1020,44 +1055,39 @@ impl Ppu {
         }
     }
 
-    fn evaluate_sprites(&mut self) {
-        // Legacy method - kept for compatibility
-        self.evaluate_sprites_cycle();
-    }
-    
-    fn evaluate_sprites_cycle(&mut self) {
-        // Sprite evaluation happens during cycles 65-256
-        // This is called every cycle during that range
-        // We need to simulate the cycle-by-cycle evaluation
+    fn evaluate_sprites_for_scanline(&mut self, target_scanline: i32) {
+        // Evaluate sprites that will be visible on target_scanline
+        // Called at cycle 320 of the PREVIOUS scanline
+        // C code: int diff = (int)ppu->scanlines - ppu->OAM[i * 4];
+        //         if(diff >= 0 && diff < range) { cache sprite }
         
-        // Calculate which OAM entry we're evaluating
-        // Evaluation starts at cycle 65, takes 2 cycles per sprite (64 sprites × 2 = 128 cycles)
-        // But we simplify: evaluate all sprites that match the scanline
+        self.secondary_oam = [0xFF; 0x20];
+        self.sprite_count = 0;
         
-        // Only evaluate once per scanline (at cycle 65)
-        if self.cycle == 65 {
-            self.sprite_count = 0;
-            let scanline = self.scanline as u16;
-            let sprite_height = if (self.ctrl & 0x20) != 0 { 16 } else { 8 };
-            
-            for i in 0..64 {
-                let y = self.oam[i * 4] as u16;
-                // Check if sprite is on current scanline
-                // Note: y=0xFF means sprite is off-screen (y >= 239 for 8x8, y >= 231 for 8x16)
-                if y < 240 && scanline >= y && scanline < y + sprite_height {
-                    if self.sprite_count < 8 {
-                        let idx = (self.sprite_count * 4) as usize;
-                        self.secondary_oam[idx] = self.oam[i * 4];
-                        self.secondary_oam[idx + 1] = self.oam[i * 4 + 1];
-                        self.secondary_oam[idx + 2] = self.oam[i * 4 + 2];
-                        self.secondary_oam[idx + 3] = self.oam[i * 4 + 3];
-                        self.sprite_indices[self.sprite_count as usize] = i as u8;
-                        self.sprite_count += 1;
-                    } else {
-                        // Sprite overflow - set flag but continue checking
-                        self.status |= 0x20;
-                        // Don't break - need to check all sprites for overflow detection
-                    }
+        // Don't evaluate if target scanline is out of visible range
+        if target_scanline < 0 || target_scanline >= 240 {
+            return;
+        }
+        
+        let sprite_height: i32 = if (self.ctrl & 0x20) != 0 { 16 } else { 8 };
+        
+        for i in 0..64 {
+            let y = self.oam[i * 4] as i32;
+            // Check if sprite is visible on target scanline
+            let diff = target_scanline - y;
+            if diff >= 0 && diff < sprite_height {
+                if self.sprite_count < 8 {
+                    let idx = (self.sprite_count * 4) as usize;
+                    self.secondary_oam[idx] = self.oam[i * 4];
+                    self.secondary_oam[idx + 1] = self.oam[i * 4 + 1];
+                    self.secondary_oam[idx + 2] = self.oam[i * 4 + 2];
+                    self.secondary_oam[idx + 3] = self.oam[i * 4 + 3];
+                    self.sprite_indices[self.sprite_count as usize] = i as u8;
+                    self.sprite_count += 1;
+                } else {
+                    // Sprite overflow - set flag
+                    self.status |= 0x20;
+                    break;
                 }
             }
         }
