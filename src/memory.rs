@@ -227,7 +227,31 @@ impl MemoryBus {
         let chr_read = |addr: u16| {
             self.cartridge.ppu_read(addr, &self.chr_ram)
         };
-        self.ppu.step(chr_read)
+        
+        // Check for scanline transition (for MMC3 IRQ)
+        let old_scanline = self.ppu.scanline;
+        let nmi = self.ppu.step(chr_read);
+        
+        // Clock mapper scanline counter at the start of each visible scanline
+        // MMC3 clocks when A12 rises, which happens at cycle 260 of visible scanlines
+        if self.ppu.scanline != old_scanline && self.ppu.scanline >= 0 && self.ppu.scanline < 240 {
+            // Only clock if rendering is enabled (bg or sprites)
+            if (self.ppu.mask & 0x18) != 0 {
+                self.cartridge.clock_scanline();
+            }
+        }
+        
+        nmi
+    }
+    
+    /// Check if mapper has a pending IRQ (for MMC3)
+    pub fn mapper_irq_pending(&self) -> bool {
+        self.cartridge.irq_pending()
+    }
+    
+    /// Acknowledge mapper IRQ
+    pub fn acknowledge_mapper_irq(&mut self) {
+        self.cartridge.acknowledge_irq();
     }
 
     pub fn step_apu(&mut self, cpu_cycles: u64) -> bool {
