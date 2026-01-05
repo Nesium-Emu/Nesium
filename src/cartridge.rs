@@ -40,6 +40,16 @@ pub trait Mapper {
     fn mirroring_changed(&self) -> bool {
         false
     }
+    /// Clock the scanline counter (for MMC3 IRQ). Returns true if IRQ should be triggered.
+    fn clock_scanline(&mut self) -> bool {
+        false
+    }
+    /// Check if mapper has a pending IRQ
+    fn irq_pending(&self) -> bool {
+        false
+    }
+    /// Acknowledge/clear pending IRQ
+    fn acknowledge_irq(&mut self) {}
 }
 
 pub struct NromMapper {
@@ -515,6 +525,320 @@ impl Mapper for Mmc1Mapper {
     }
 }
 
+// MMC3 Mapper (Mapper 4) - used by SMB3, Kirby's Adventure, etc.
+pub struct Mmc3Mapper {
+    mirroring: Mirroring,
+    has_chr_ram: bool,
+    prg_rom_size: usize,
+    chr_rom_size: usize,
+    
+    // PRG banking: 4x 8KB banks
+    // Bank 0: $8000-$9FFF (switchable or fixed to 2nd-last)
+    // Bank 1: $A000-$BFFF (switchable R7)
+    // Bank 2: $C000-$DFFF (fixed to 2nd-last or switchable)
+    // Bank 3: $E000-$FFFF (fixed to last)
+    prg_bank_offsets: [usize; 4],
+    
+    // CHR banking: 8x 1KB banks
+    chr_bank_offsets: [usize; 8],
+    
+    // Bank select register
+    bank_select: u8,      // Which bank register to update next
+    prg_mode: bool,       // false: $8000 switchable, true: $C000 switchable  
+    chr_inversion: bool,  // Swap CHR bank regions
+    
+    // Bank data registers R0-R7
+    bank_data: [u8; 8],
+    
+    // IRQ counter
+    irq_latch: u8,
+    irq_counter: u8,
+    irq_reload: bool,
+    irq_enabled: bool,
+    irq_pending: bool,
+    
+    // Clamp values
+    prg_clamp: u8,
+    chr_clamp: u8,
+    
+    mirroring_changed_flag: bool,
+}
+
+impl Mmc3Mapper {
+    pub fn new(mirroring: Mirroring, has_chr_ram: bool, prg_rom_size: usize, chr_rom_size: usize) -> Self {
+        let prg_banks_8k = prg_rom_size / 0x2000; // 8KB banks
+        let chr_banks_1k = if has_chr_ram { 8 } else { chr_rom_size / 0x400 }; // 1KB banks
+        
+        // Calculate clamps (next power of 2 - 1)
+        let prg_clamp = if prg_banks_8k > 0 {
+            (next_power_of_2(prg_banks_8k) - 1) as u8
+        } else {
+            0
+        };
+        let chr_clamp = if chr_banks_1k > 0 {
+            (next_power_of_2(chr_banks_1k) - 1) as u8
+        } else {
+            0
+        };
+        
+        log::info!("MMC3 mapper initialized: prg_8k_banks={}, chr_1k_banks={}, prg_clamp={}, chr_clamp={}, has_chr_ram={}",
+            prg_banks_8k, chr_banks_1k, prg_clamp, chr_clamp, has_chr_ram);
+        
+        let mut mapper = Self {
+            mirroring,
+            has_chr_ram,
+            prg_rom_size,
+            chr_rom_size: if has_chr_ram { 0x2000 } else { chr_rom_size },
+            prg_bank_offsets: [0; 4],
+            chr_bank_offsets: [0; 8],
+            bank_select: 0,
+            prg_mode: false,
+            chr_inversion: false,
+            bank_data: [0; 8],
+            irq_latch: 0,
+            irq_counter: 0,
+            irq_reload: false,
+            irq_enabled: false,
+            irq_pending: false,
+            prg_clamp,
+            chr_clamp,
+            mirroring_changed_flag: false,
+        };
+        
+        // Initialize PRG banks: last two 8KB banks fixed
+        let last_bank = prg_rom_size.saturating_sub(0x2000);
+        let second_last = prg_rom_size.saturating_sub(0x4000);
+        mapper.prg_bank_offsets[2] = second_last;
+        mapper.prg_bank_offsets[3] = last_bank;
+        
+        // Initialize CHR banks
+        for i in 0..8 {
+            mapper.chr_bank_offsets[i] = i * 0x400;
+        }
+        
+        mapper
+    }
+    
+    fn update_prg_banks(&mut self) {
+        let second_last = self.prg_rom_size.saturating_sub(0x4000);
+        let last = self.prg_rom_size.saturating_sub(0x2000);
+        
+        let r6 = (self.bank_data[6] & self.prg_clamp) as usize * 0x2000;
+        let r7 = (self.bank_data[7] & self.prg_clamp) as usize * 0x2000;
+        
+        if self.prg_mode {
+            // PRG mode 1: $8000 = 2nd-last, $C000 = R6
+            self.prg_bank_offsets[0] = second_last;
+            self.prg_bank_offsets[2] = r6;
+        } else {
+            // PRG mode 0: $8000 = R6, $C000 = 2nd-last
+            self.prg_bank_offsets[0] = r6;
+            self.prg_bank_offsets[2] = second_last;
+        }
+        self.prg_bank_offsets[1] = r7;
+        self.prg_bank_offsets[3] = last;
+        
+        // Ensure within bounds
+        for offset in &mut self.prg_bank_offsets {
+            if self.prg_rom_size > 0 {
+                *offset %= self.prg_rom_size;
+            }
+        }
+    }
+    
+    fn update_chr_banks(&mut self) {
+        if self.has_chr_ram {
+            // CHR RAM: simple linear mapping
+            for i in 0..8 {
+                self.chr_bank_offsets[i] = (i * 0x400) % 0x2000;
+            }
+            return;
+        }
+        
+        // R0 and R1 are 2KB banks (bits 0 ignored)
+        let r0 = (self.bank_data[0] & 0xFE & self.chr_clamp) as usize * 0x400;
+        let r1 = (self.bank_data[1] & 0xFE & self.chr_clamp) as usize * 0x400;
+        // R2-R5 are 1KB banks
+        let r2 = (self.bank_data[2] & self.chr_clamp) as usize * 0x400;
+        let r3 = (self.bank_data[3] & self.chr_clamp) as usize * 0x400;
+        let r4 = (self.bank_data[4] & self.chr_clamp) as usize * 0x400;
+        let r5 = (self.bank_data[5] & self.chr_clamp) as usize * 0x400;
+        
+        if self.chr_inversion {
+            // CHR A12 inversion: swap 2KB and 1KB regions
+            // $0000-$0FFF: R2,R3,R4,R5 (1KB each)
+            // $1000-$1FFF: R0,R0+1,R1,R1+1 (2KB each)
+            self.chr_bank_offsets[0] = r2;
+            self.chr_bank_offsets[1] = r3;
+            self.chr_bank_offsets[2] = r4;
+            self.chr_bank_offsets[3] = r5;
+            self.chr_bank_offsets[4] = r0;
+            self.chr_bank_offsets[5] = r0 + 0x400;
+            self.chr_bank_offsets[6] = r1;
+            self.chr_bank_offsets[7] = r1 + 0x400;
+        } else {
+            // Normal: 
+            // $0000-$0FFF: R0,R0+1,R1,R1+1 (2KB each)
+            // $1000-$1FFF: R2,R3,R4,R5 (1KB each)
+            self.chr_bank_offsets[0] = r0;
+            self.chr_bank_offsets[1] = r0 + 0x400;
+            self.chr_bank_offsets[2] = r1;
+            self.chr_bank_offsets[3] = r1 + 0x400;
+            self.chr_bank_offsets[4] = r2;
+            self.chr_bank_offsets[5] = r3;
+            self.chr_bank_offsets[6] = r4;
+            self.chr_bank_offsets[7] = r5;
+        }
+        
+        // Ensure within bounds
+        let chr_size = self.chr_rom_size.max(1);
+        for offset in &mut self.chr_bank_offsets {
+            *offset %= chr_size;
+        }
+    }
+    
+    /// Called by PPU on each scanline when rendering is enabled
+    pub fn clock_irq(&mut self) -> bool {
+        if self.irq_counter == 0 || self.irq_reload {
+            self.irq_counter = self.irq_latch;
+            self.irq_reload = false;
+        } else {
+            self.irq_counter -= 1;
+        }
+        
+        if self.irq_counter == 0 && self.irq_enabled {
+            self.irq_pending = true;
+            return true;
+        }
+        false
+    }
+    
+    pub fn irq_pending(&self) -> bool {
+        self.irq_pending
+    }
+    
+    pub fn acknowledge_irq(&mut self) {
+        self.irq_pending = false;
+    }
+}
+
+impl Mapper for Mmc3Mapper {
+    fn cpu_read(&self, addr: u16, prg_rom: &[u8]) -> u8 {
+        if prg_rom.is_empty() {
+            return 0xFF;
+        }
+        
+        let bank = ((addr - 0x8000) / 0x2000) as usize;
+        let offset = self.prg_bank_offsets[bank] + (addr as usize & 0x1FFF);
+        prg_rom[offset % prg_rom.len()]
+    }
+    
+    fn cpu_write(&mut self, addr: u16, value: u8, _prg_rom: &[u8], _prg_ram: &mut [u8]) {
+        self.mirroring_changed_flag = false;
+        
+        if addr < 0x8000 {
+            return;
+        }
+        
+        match addr & 0xE001 {
+            0x8000 => {
+                // Bank select
+                self.bank_select = value & 0x07;
+                self.prg_mode = (value & 0x40) != 0;
+                self.chr_inversion = (value & 0x80) != 0;
+                self.update_prg_banks();
+                self.update_chr_banks();
+            }
+            0x8001 => {
+                // Bank data
+                self.bank_data[self.bank_select as usize] = value;
+                if self.bank_select < 6 {
+                    self.update_chr_banks();
+                } else {
+                    self.update_prg_banks();
+                }
+            }
+            0xA000 => {
+                // Mirroring (ignored for 4-screen)
+                if self.mirroring != Mirroring::FourScreen {
+                    let new_mirroring = if (value & 0x01) != 0 {
+                        Mirroring::Horizontal
+                    } else {
+                        Mirroring::Vertical
+                    };
+                    if new_mirroring != self.mirroring {
+                        self.mirroring = new_mirroring;
+                        self.mirroring_changed_flag = true;
+                    }
+                }
+            }
+            0xA001 => {
+                // PRG RAM protect (not implemented)
+            }
+            0xC000 => {
+                // IRQ latch
+                self.irq_latch = value;
+            }
+            0xC001 => {
+                // IRQ reload
+                self.irq_counter = 0;
+                self.irq_reload = true;
+            }
+            0xE000 => {
+                // IRQ disable and acknowledge
+                self.irq_enabled = false;
+                self.irq_pending = false;
+            }
+            0xE001 => {
+                // IRQ enable
+                self.irq_enabled = true;
+            }
+            _ => {}
+        }
+    }
+    
+    fn ppu_read(&self, addr: u16, chr_rom: &[u8], chr_ram: &[u8]) -> u8 {
+        if self.has_chr_ram {
+            return chr_ram[addr as usize % chr_ram.len().max(1)];
+        }
+        
+        if chr_rom.is_empty() {
+            return 0;
+        }
+        
+        // Each 1KB bank
+        let bank = (addr / 0x400) as usize;
+        let offset = self.chr_bank_offsets[bank] + (addr as usize & 0x3FF);
+        chr_rom[offset % chr_rom.len()]
+    }
+    
+    fn ppu_write(&mut self, addr: u16, value: u8, chr_ram: &mut [u8]) {
+        if self.has_chr_ram && !chr_ram.is_empty() {
+            chr_ram[addr as usize % chr_ram.len()] = value;
+        }
+    }
+    
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+    
+    fn mirroring_changed(&self) -> bool {
+        self.mirroring_changed_flag
+    }
+    
+    fn clock_scanline(&mut self) -> bool {
+        self.clock_irq()
+    }
+    
+    fn irq_pending(&self) -> bool {
+        self.irq_pending
+    }
+    
+    fn acknowledge_irq(&mut self) {
+        self.irq_pending = false;
+    }
+}
+
 impl Cartridge {
     pub fn load(path: &str) -> Result<Self, CartridgeError> {
         let mut file = File::open(path)?;
@@ -582,6 +906,7 @@ impl Cartridge {
             0 => Box::new(NromMapper::new(mirroring, has_chr_ram)),
             1 => Box::new(Mmc1Mapper::new(mirroring, has_chr_ram, prg_rom_size, chr_rom_size)),
             2 => Box::new(UxromMapper::new(mirroring, has_chr_ram, prg_rom_size)),
+            4 => Box::new(Mmc3Mapper::new(mirroring, has_chr_ram, prg_rom_size, chr_rom_size)),
             _ => return Err(CartridgeError::UnsupportedMapper(mapper_id)),
         };
 
@@ -627,5 +952,20 @@ impl Cartridge {
 
     pub fn ppu_write(&mut self, addr: u16, value: u8, chr_ram: &mut [u8]) {
         self.mapper.ppu_write(addr, value, chr_ram);
+    }
+    
+    /// Clock the mapper's scanline counter (for MMC3 IRQ)
+    pub fn clock_scanline(&mut self) -> bool {
+        self.mapper.clock_scanline()
+    }
+    
+    /// Check if mapper has a pending IRQ
+    pub fn irq_pending(&self) -> bool {
+        self.mapper.irq_pending()
+    }
+    
+    /// Acknowledge mapper IRQ
+    pub fn acknowledge_irq(&mut self) {
+        self.mapper.acknowledge_irq();
     }
 }
