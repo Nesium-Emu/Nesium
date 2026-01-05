@@ -2,11 +2,44 @@
 name = "nesium"
 version = "0.1.0"
 edition = "2021"
+description = "A high-accuracy NES emulator with a modern UI"
+authors = ["Nesium Team"]
 
 [dependencies]
-sdl2 = { version = "0.35", features = ["static-link"] }
+# GUI Framework
+eframe = { version = "0.31", features = ["persistence"] }
+egui = "0.31"
+egui_extras = { version = "0.31", features = ["image"] }
+
+# File dialogs
+rfd = "0.15"
+
+# Audio
+cpal = "0.15"
+
+# Serialization for settings
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Command line parsing
 clap = { version = "4.0", features = ["derive"] }
+
+# Logging
 log = "0.4"
 env_logger = "0.10"
+
+# Error handling
 thiserror = "1.0"
 
+# Directories for config storage
+dirs = "5.0"
+
+# Image processing (for thumbnails)
+image = "0.25"
+
+[features]
+default = []
+
+[profile.release]
+opt-level = 3
+lto = true
