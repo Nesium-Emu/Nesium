@@ -11,8 +11,8 @@ mod trace;
 use clap::Parser;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::fs::{File, create_dir_all};
-use std::path::PathBuf;
-use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::io::{self, Read, Write};
 
 #[derive(Parser)]
 #[command(name = "nesium")]
@@ -130,6 +130,9 @@ fn main() {
     println!("PRG ROM: {} KB", cartridge.prg_rom.len() / 1024);
     println!("CHR ROM: {} KB", cartridge.chr_rom.len() / 1024);
 
+    // Check if cartridge has battery backup
+    let has_battery = cartridge.has_ram;
+    
     let mut emulator = match emulator::Emulator::new(cartridge, args.trace) {
         Ok(emu) => emu,
         Err(e) => {
@@ -137,6 +140,19 @@ fn main() {
             return;
         }
     };
+    
+    // Load save file if cartridge has battery backup
+    let save_path = get_save_path(&args.rom_path);
+    if has_battery {
+        println!("Battery backup: Yes");
+        if let Some(sram_data) = load_sram(&save_path) {
+            emulator.set_sram(&sram_data);
+        } else {
+            println!("No existing save file found.");
+        }
+    } else {
+        println!("Battery backup: No");
+    }
 
     println!("Starting emulation...");
     println!("Controls:");
@@ -188,6 +204,12 @@ fn main() {
         frame_time = Instant::now();
     }
 
+    // Save SRAM on exit if cartridge has battery backup
+    if has_battery {
+        println!("Saving game...");
+        save_sram(&save_path, emulator.get_sram());
+    }
+
     println!("Emulation stopped.");
 }
 
@@ -203,5 +225,77 @@ fn get_scancode(keycode: sdl2::keyboard::Keycode) -> u32 {
         Keycode::Left => 1073741903,
         Keycode::Right => 1073741906,
         _ => 0,
+    }
+}
+
+/// Get the save file path for a given ROM path
+fn get_save_path(rom_path: &str) -> PathBuf {
+    let rom_path = Path::new(rom_path);
+    let save_dir = PathBuf::from("saves");
+    
+    // Create saves directory if it doesn't exist
+    let _ = create_dir_all(&save_dir);
+    
+    // Generate save filename from ROM name
+    let save_name = rom_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown");
+    
+    save_dir.join(format!("{}.sav", save_name))
+}
+
+/// Load SRAM data from a save file
+fn load_sram(save_path: &Path) -> Option<Vec<u8>> {
+    if !save_path.exists() {
+        return None;
+    }
+    
+    match File::open(save_path) {
+        Ok(mut file) => {
+            let mut data = Vec::new();
+            match file.read_to_end(&mut data) {
+                Ok(_) => {
+                    println!("Loaded save file: {}", save_path.display());
+                    Some(data)
+                }
+                Err(e) => {
+                    eprintln!("Error reading save file: {}", e);
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Error opening save file: {}", e);
+            None
+        }
+    }
+}
+
+/// Save SRAM data to a save file
+fn save_sram(save_path: &Path, data: &[u8]) -> bool {
+    // Check if data is all zeros (no save data)
+    if data.iter().all(|&b| b == 0) {
+        println!("SRAM is empty, not saving.");
+        return false;
+    }
+    
+    match File::create(save_path) {
+        Ok(mut file) => {
+            match file.write_all(data) {
+                Ok(_) => {
+                    println!("Saved game to: {}", save_path.display());
+                    true
+                }
+                Err(e) => {
+                    eprintln!("Error writing save file: {}", e);
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Error creating save file: {}", e);
+            false
+        }
     }
 }

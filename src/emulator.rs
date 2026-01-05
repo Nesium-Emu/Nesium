@@ -143,4 +143,20 @@ impl Emulator {
         }
         Ok(())
     }
+    
+    /// Check if the cartridge has battery-backed SRAM
+    pub fn has_battery(&self) -> bool {
+        self.memory.cartridge.has_ram
+    }
+    
+    /// Get a copy of the SRAM contents (for saving)
+    pub fn get_sram(&self) -> &[u8] {
+        &self.memory.prg_ram
+    }
+    
+    /// Load SRAM contents (from a save file)
+    pub fn set_sram(&mut self, data: &[u8]) {
+        let len = data.len().min(self.memory.prg_ram.len());
+        self.memory.prg_ram[..len].copy_from_slice(&data[..len]);
+    }
 }
