@@ -229,20 +229,20 @@ fn get_scancode(keycode: sdl2::keyboard::Keycode) -> u32 {
 }
 
 /// Get the save file path for a given ROM path
+/// Saves are stored next to the ROM file with .sav extension
 fn get_save_path(rom_path: &str) -> PathBuf {
     let rom_path = Path::new(rom_path);
-    let save_dir = PathBuf::from("saves");
     
-    // Create saves directory if it doesn't exist
-    let _ = create_dir_all(&save_dir);
+    // Get the directory containing the ROM
+    let rom_dir = rom_path.parent().unwrap_or(Path::new("."));
     
-    // Generate save filename from ROM name
+    // Generate save filename from ROM name (same name, .sav extension)
     let save_name = rom_path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown");
     
-    save_dir.join(format!("{}.sav", save_name))
+    rom_dir.join(format!("{}.sav", save_name))
 }
 
 /// Load SRAM data from a save file
