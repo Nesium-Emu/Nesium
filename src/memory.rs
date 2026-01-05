@@ -143,7 +143,11 @@ impl CpuBus for MemoryBus {
             }
             0x2000..=0x3FFF => {
                 // PPU registers (mirrored every 8 bytes)
-                self.ppu.write_register(addr, value);
+                // write_register returns Some((chr_addr, value)) for CHR-RAM writes
+                if let Some((chr_addr, chr_value)) = self.ppu.write_register(addr, value) {
+                    // Pattern table write (0x0000-0x1FFF) - write to CHR-RAM
+                    self.cartridge.ppu_write(chr_addr, chr_value, &mut self.chr_ram);
+                }
             }
             0x4000..=0x4013 | 0x4015 => {
                 // APU registers

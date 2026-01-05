@@ -193,7 +193,8 @@ impl Ppu {
         }
     }
 
-    pub fn write_register(&mut self, addr: u16, value: u8) {
+    pub fn write_register(&mut self, addr: u16, value: u8) -> Option<(u16, u8)> {
+        // Returns Some((chr_addr, value)) if this is a CHR-RAM write that needs to be handled
         match addr & 0x2007 {
             0x2000 => {
                 // PPUCTRL ($2000)
@@ -245,24 +246,31 @@ impl Ppu {
             }
             0x2006 => {
                 // PPUADDR
-                // ALWAYS log first 20 writes (both high and low) to verify they're happening
+                // Check for mid-frame write (TLOZ uses this for vertical scrolling)
+                let is_midframe = self.scanline >= 0 && self.scanline < 240 && self.cycle > 0;
+                
                 if !self.write_toggle {
                     // First write: high byte
-                    log::info!("PPUADDR write (HIGH, count={}): frame={}, value=0x{:02X}, temp_before=0x{:04X}", 
-                        self.ppuaddr_write_count, self.frame, value, self.vram_addr_temp);
+                    if self.ppuaddr_write_count < 10 {
+                        log::info!("PPUADDR write (HIGH, count={}): frame={}, value=0x{:02X}, temp_before=0x{:04X}", 
+                            self.ppuaddr_write_count, self.frame, value, self.vram_addr_temp);
+                    }
                     self.vram_addr_temp = (self.vram_addr_temp & 0x00FF) | ((value & 0x3F) as u16) << 8;
                 } else {
                     // Second write: low byte
                     self.vram_addr_temp = (self.vram_addr_temp & 0xFF00) | value as u16;
                     self.vram_addr = self.vram_addr_temp;
                     self.ppuaddr_write_count += 1;
-                    // Log first 200 PPUADDR writes (complete address)
-                    if self.ppuaddr_write_count <= 200 {
+                    
+                    // Log mid-frame PPUADDR writes (TLOZ vertical scrolling technique)
+                    if is_midframe {
+                        log::info!("MIDFRAME PPUADDR write: frame={}, scanline={}, cycle={}, vram_addr=0x{:04X} (coarse_y={})", 
+                            self.frame, self.scanline, self.cycle, self.vram_addr,
+                            (self.vram_addr >> 5) & 0x1F);
+                    } else if self.ppuaddr_write_count <= 10 {
                         log::info!("PPUADDR write #{} (LOW): frame={}, value=0x{:02X}, vram_addr=0x{:04X} (final)", 
                             self.ppuaddr_write_count, self.frame, value, self.vram_addr);
                     }
-                    // Note: Buffer is NOT reset when PPUADDR is written
-                    // The buffer persists and the first read after PPUADDR will return the buffer value
                 }
                 self.write_toggle = !self.write_toggle;
             }
@@ -323,9 +331,15 @@ impl Ppu {
                 // CRITICAL: increment MUST happen after write, and MUST update vram_addr correctly
                 self.write_vram(addr, value);
                 self.increment_vram_addr();
+                
+                // Return pattern table writes for CHR-RAM handling
+                if addr < 0x2000 {
+                    return Some((addr, value));
+                }
             }
             _ => {}
         }
+        None
     }
 
     pub fn read_vram(&self, addr: u16, chr_read: &mut Option<&mut dyn FnMut(u16) -> u8>) -> u8 {
