@@ -59,6 +59,12 @@ impl Emulator {
             if nmi_triggered {
                 self.cpu.trigger_nmi(&mut self.memory as &mut dyn crate::cpu::CpuBus);
             }
+            
+            // Check for mapper IRQ (MMC3)
+            if self.memory.mapper_irq_pending() && (self.cpu.status & crate::cpu::FLAG_I) == 0 {
+                self.memory.acknowledge_mapper_irq();
+                self.cpu.trigger_irq(&mut self.memory as &mut dyn crate::cpu::CpuBus);
+            }
 
             // Accumulate CPU cycles (CPU runs at 1/3 PPU speed)
             self.cpu_cycle_accumulator += CPU_CYCLES_PER_PPU_CYCLE;
