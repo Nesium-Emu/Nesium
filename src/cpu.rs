@@ -190,7 +190,8 @@ impl Cpu {
 
     pub fn trigger_nmi(&mut self, bus: &mut dyn CpuBus) {
         self.push_word(self.pc, bus);
-        self.push(self.status | FLAG_B | FLAG_U, bus);
+        // NMI should push status with B flag clear (unlike BRK which sets B)
+        self.push((self.status & !FLAG_B) | FLAG_U, bus);
         self.set_flag(FLAG_I, true);
         self.pc = self.read_word(0xFFFA, bus);
         self.cycles += 7;
@@ -1197,9 +1198,496 @@ impl Cpu {
                 self.update_zero_negative(value);
                 7
             }
+
+            // ============================================
+            // UNOFFICIAL/ILLEGAL OPCODES
+            // ============================================
+
+            // *SLO - ASL + ORA (Shift Left then OR with Accumulator)
+            0x03 => { // (indirect, X)
+                let (addr, _) = self.addr_indirect_x(bus);
+                let value = bus.read(addr);
+                let shifted = self.asl(value);
+                bus.write(addr, shifted);
+                self.ora(shifted);
+                8
+            }
+            0x07 => { // zero page
+                let addr = self.addr_zero_page(bus);
+                let value = bus.read(addr);
+                let shifted = self.asl(value);
+                bus.write(addr, shifted);
+                self.ora(shifted);
+                5
+            }
+            0x0F => { // absolute
+                let addr = self.addr_absolute(bus);
+                let value = bus.read(addr);
+                let shifted = self.asl(value);
+                bus.write(addr, shifted);
+                self.ora(shifted);
+                6
+            }
+            0x13 => { // (indirect), Y
+                let (addr, _) = self.addr_indirect_y(bus);
+                let value = bus.read(addr);
+                let shifted = self.asl(value);
+                bus.write(addr, shifted);
+                self.ora(shifted);
+                8
+            }
+            0x17 => { // zero page, X
+                let addr = self.addr_zero_page_x(bus);
+                let value = bus.read(addr);
+                let shifted = self.asl(value);
+                bus.write(addr, shifted);
+                self.ora(shifted);
+                6
+            }
+            0x1B => { // absolute, Y
+                let (addr, _) = self.addr_absolute_y(bus);
+                let value = bus.read(addr);
+                let shifted = self.asl(value);
+                bus.write(addr, shifted);
+                self.ora(shifted);
+                7
+            }
+            0x1F => { // absolute, X
+                let (addr, _) = self.addr_absolute_x(bus);
+                let value = bus.read(addr);
+                let shifted = self.asl(value);
+                bus.write(addr, shifted);
+                self.ora(shifted);
+                7
+            }
+
+            // *RLA - ROL + AND (Rotate Left then AND with Accumulator)
+            0x23 => { // (indirect, X)
+                let (addr, _) = self.addr_indirect_x(bus);
+                let value = bus.read(addr);
+                let rotated = self.rol(value);
+                bus.write(addr, rotated);
+                self.and(rotated);
+                8
+            }
+            0x27 => { // zero page
+                let addr = self.addr_zero_page(bus);
+                let value = bus.read(addr);
+                let rotated = self.rol(value);
+                bus.write(addr, rotated);
+                self.and(rotated);
+                5
+            }
+            0x2F => { // absolute
+                let addr = self.addr_absolute(bus);
+                let value = bus.read(addr);
+                let rotated = self.rol(value);
+                bus.write(addr, rotated);
+                self.and(rotated);
+                6
+            }
+            0x33 => { // (indirect), Y
+                let (addr, _) = self.addr_indirect_y(bus);
+                let value = bus.read(addr);
+                let rotated = self.rol(value);
+                bus.write(addr, rotated);
+                self.and(rotated);
+                8
+            }
+            0x37 => { // zero page, X
+                let addr = self.addr_zero_page_x(bus);
+                let value = bus.read(addr);
+                let rotated = self.rol(value);
+                bus.write(addr, rotated);
+                self.and(rotated);
+                6
+            }
+            0x3B => { // absolute, Y
+                let (addr, _) = self.addr_absolute_y(bus);
+                let value = bus.read(addr);
+                let rotated = self.rol(value);
+                bus.write(addr, rotated);
+                self.and(rotated);
+                7
+            }
+            0x3F => { // absolute, X
+                let (addr, _) = self.addr_absolute_x(bus);
+                let value = bus.read(addr);
+                let rotated = self.rol(value);
+                bus.write(addr, rotated);
+                self.and(rotated);
+                7
+            }
+
+            // *SRE - LSR + EOR (Shift Right then XOR with Accumulator)
+            0x43 => { // (indirect, X)
+                let (addr, _) = self.addr_indirect_x(bus);
+                let value = bus.read(addr);
+                let shifted = self.lsr(value);
+                bus.write(addr, shifted);
+                self.eor(shifted);
+                8
+            }
+            0x47 => { // zero page
+                let addr = self.addr_zero_page(bus);
+                let value = bus.read(addr);
+                let shifted = self.lsr(value);
+                bus.write(addr, shifted);
+                self.eor(shifted);
+                5
+            }
+            0x4F => { // absolute
+                let addr = self.addr_absolute(bus);
+                let value = bus.read(addr);
+                let shifted = self.lsr(value);
+                bus.write(addr, shifted);
+                self.eor(shifted);
+                6
+            }
+            0x53 => { // (indirect), Y
+                let (addr, _) = self.addr_indirect_y(bus);
+                let value = bus.read(addr);
+                let shifted = self.lsr(value);
+                bus.write(addr, shifted);
+                self.eor(shifted);
+                8
+            }
+            0x57 => { // zero page, X
+                let addr = self.addr_zero_page_x(bus);
+                let value = bus.read(addr);
+                let shifted = self.lsr(value);
+                bus.write(addr, shifted);
+                self.eor(shifted);
+                6
+            }
+            0x5B => { // absolute, Y
+                let (addr, _) = self.addr_absolute_y(bus);
+                let value = bus.read(addr);
+                let shifted = self.lsr(value);
+                bus.write(addr, shifted);
+                self.eor(shifted);
+                7
+            }
+            0x5F => { // absolute, X
+                let (addr, _) = self.addr_absolute_x(bus);
+                let value = bus.read(addr);
+                let shifted = self.lsr(value);
+                bus.write(addr, shifted);
+                self.eor(shifted);
+                7
+            }
+
+            // *RRA - ROR + ADC (Rotate Right then Add with Carry)
+            0x63 => { // (indirect, X)
+                let (addr, _) = self.addr_indirect_x(bus);
+                let value = bus.read(addr);
+                let rotated = self.ror(value);
+                bus.write(addr, rotated);
+                self.adc(rotated);
+                8
+            }
+            0x67 => { // zero page
+                let addr = self.addr_zero_page(bus);
+                let value = bus.read(addr);
+                let rotated = self.ror(value);
+                bus.write(addr, rotated);
+                self.adc(rotated);
+                5
+            }
+            0x6F => { // absolute
+                let addr = self.addr_absolute(bus);
+                let value = bus.read(addr);
+                let rotated = self.ror(value);
+                bus.write(addr, rotated);
+                self.adc(rotated);
+                6
+            }
+            0x73 => { // (indirect), Y
+                let (addr, _) = self.addr_indirect_y(bus);
+                let value = bus.read(addr);
+                let rotated = self.ror(value);
+                bus.write(addr, rotated);
+                self.adc(rotated);
+                8
+            }
+            0x77 => { // zero page, X
+                let addr = self.addr_zero_page_x(bus);
+                let value = bus.read(addr);
+                let rotated = self.ror(value);
+                bus.write(addr, rotated);
+                self.adc(rotated);
+                6
+            }
+            0x7B => { // absolute, Y
+                let (addr, _) = self.addr_absolute_y(bus);
+                let value = bus.read(addr);
+                let rotated = self.ror(value);
+                bus.write(addr, rotated);
+                self.adc(rotated);
+                7
+            }
+            0x7F => { // absolute, X
+                let (addr, _) = self.addr_absolute_x(bus);
+                let value = bus.read(addr);
+                let rotated = self.ror(value);
+                bus.write(addr, rotated);
+                self.adc(rotated);
+                7
+            }
+
+            // *SAX - Store A & X (AND A with X, store result)
+            0x83 => { // (indirect, X)
+                let (addr, _) = self.addr_indirect_x(bus);
+                bus.write(addr, self.a & self.x);
+                6
+            }
+            0x87 => { // zero page
+                let addr = self.addr_zero_page(bus);
+                bus.write(addr, self.a & self.x);
+                3
+            }
+            0x8F => { // absolute
+                let addr = self.addr_absolute(bus);
+                bus.write(addr, self.a & self.x);
+                4
+            }
+            0x97 => { // zero page, Y
+                let addr = self.addr_zero_page_y(bus);
+                bus.write(addr, self.a & self.x);
+                4
+            }
+
+            // *LAX - LDA + LDX (Load A and X with same value)
+            0xA3 => { // (indirect, X)
+                let (addr, extra_cycle) = self.addr_indirect_x(bus);
+                let value = bus.read(addr);
+                self.a = value;
+                self.x = value;
+                self.update_zero_negative(value);
+                6 + extra_cycle
+            }
+            0xA7 => { // zero page
+                let addr = self.addr_zero_page(bus);
+                let value = bus.read(addr);
+                self.a = value;
+                self.x = value;
+                self.update_zero_negative(value);
+                3
+            }
+            0xAB => { // immediate (unstable)
+                let value = self.addr_immediate(bus);
+                self.a = value;
+                self.x = value;
+                self.update_zero_negative(value);
+                2
+            }
+            0xAF => { // absolute
+                let addr = self.addr_absolute(bus);
+                let value = bus.read(addr);
+                self.a = value;
+                self.x = value;
+                self.update_zero_negative(value);
+                4
+            }
+            0xB3 => { // (indirect), Y
+                let (addr, extra_cycle) = self.addr_indirect_y(bus);
+                let value = bus.read(addr);
+                self.a = value;
+                self.x = value;
+                self.update_zero_negative(value);
+                5 + extra_cycle
+            }
+            0xB7 => { // zero page, Y
+                let addr = self.addr_zero_page_y(bus);
+                let value = bus.read(addr);
+                self.a = value;
+                self.x = value;
+                self.update_zero_negative(value);
+                4
+            }
+            0xBF => { // absolute, Y
+                let (addr, extra_cycle) = self.addr_absolute_y(bus);
+                let value = bus.read(addr);
+                self.a = value;
+                self.x = value;
+                self.update_zero_negative(value);
+                4 + extra_cycle
+            }
+
+            // *DCP - DEC + CMP (Decrement memory then Compare)
+            0xC3 => { // (indirect, X)
+                let (addr, _) = self.addr_indirect_x(bus);
+                let value = bus.read(addr).wrapping_sub(1);
+                bus.write(addr, value);
+                self.cmp(value);
+                8
+            }
+            0xC7 => { // zero page
+                let addr = self.addr_zero_page(bus);
+                let value = bus.read(addr).wrapping_sub(1);
+                bus.write(addr, value);
+                self.cmp(value);
+                5
+            }
+            0xCF => { // absolute
+                let addr = self.addr_absolute(bus);
+                let value = bus.read(addr).wrapping_sub(1);
+                bus.write(addr, value);
+                self.cmp(value);
+                6
+            }
+            0xD3 => { // (indirect), Y
+                let (addr, _) = self.addr_indirect_y(bus);
+                let value = bus.read(addr).wrapping_sub(1);
+                bus.write(addr, value);
+                self.cmp(value);
+                8
+            }
+            0xD7 => { // zero page, X
+                let addr = self.addr_zero_page_x(bus);
+                let value = bus.read(addr).wrapping_sub(1);
+                bus.write(addr, value);
+                self.cmp(value);
+                6
+            }
+            0xDB => { // absolute, Y
+                let (addr, _) = self.addr_absolute_y(bus);
+                let value = bus.read(addr).wrapping_sub(1);
+                bus.write(addr, value);
+                self.cmp(value);
+                7
+            }
+            0xDF => { // absolute, X
+                let (addr, _) = self.addr_absolute_x(bus);
+                let value = bus.read(addr).wrapping_sub(1);
+                bus.write(addr, value);
+                self.cmp(value);
+                7
+            }
+
+            // *ISB/ISC/INS - INC + SBC (Increment memory then Subtract)
+            0xE3 => { // (indirect, X)
+                let (addr, _) = self.addr_indirect_x(bus);
+                let value = bus.read(addr).wrapping_add(1);
+                bus.write(addr, value);
+                self.sbc(value);
+                8
+            }
+            0xE7 => { // zero page
+                let addr = self.addr_zero_page(bus);
+                let value = bus.read(addr).wrapping_add(1);
+                bus.write(addr, value);
+                self.sbc(value);
+                5
+            }
+            0xEB => { // immediate (same as SBC #imm, unofficial)
+                let value = self.addr_immediate(bus);
+                self.sbc(value);
+                2
+            }
+            0xEF => { // absolute
+                let addr = self.addr_absolute(bus);
+                let value = bus.read(addr).wrapping_add(1);
+                bus.write(addr, value);
+                self.sbc(value);
+                6
+            }
+            0xF3 => { // (indirect), Y
+                let (addr, _) = self.addr_indirect_y(bus);
+                let value = bus.read(addr).wrapping_add(1);
+                bus.write(addr, value);
+                self.sbc(value);
+                8
+            }
+            0xF7 => { // zero page, X
+                let addr = self.addr_zero_page_x(bus);
+                let value = bus.read(addr).wrapping_add(1);
+                bus.write(addr, value);
+                self.sbc(value);
+                6
+            }
+            0xFB => { // absolute, Y
+                let (addr, _) = self.addr_absolute_y(bus);
+                let value = bus.read(addr).wrapping_add(1);
+                bus.write(addr, value);
+                self.sbc(value);
+                7
+            }
+            0xFF => { // absolute, X (THIS IS THE ZELDA OPCODE!)
+                let (addr, _) = self.addr_absolute_x(bus);
+                let value = bus.read(addr).wrapping_add(1);
+                bus.write(addr, value);
+                self.sbc(value);
+                7
+            }
+
+            // *ANC - AND + set Carry to bit 7
+            0x0B | 0x2B => {
+                let value = self.addr_immediate(bus);
+                self.and(value);
+                self.set_flag(FLAG_C, (self.a & 0x80) != 0);
+                2
+            }
+
+            // *ALR/ASR - AND + LSR
+            0x4B => {
+                let value = self.addr_immediate(bus);
+                self.a &= value;
+                self.a = self.lsr(self.a);
+                2
+            }
+
+            // *ARR - AND + ROR (with weird flag behavior)
+            0x6B => {
+                let value = self.addr_immediate(bus);
+                self.a &= value;
+                self.a = self.ror(self.a);
+                // Special flag handling for ARR
+                self.set_flag(FLAG_C, (self.a & 0x40) != 0);
+                self.set_flag(FLAG_V, ((self.a & 0x40) ^ ((self.a & 0x20) << 1)) != 0);
+                2
+            }
+
+            // *AXS/SBX - (A & X) - immediate -> X
+            0xCB => {
+                let value = self.addr_immediate(bus);
+                let temp = (self.a & self.x).wrapping_sub(value);
+                self.set_flag(FLAG_C, (self.a & self.x) >= value);
+                self.x = temp;
+                self.update_zero_negative(self.x);
+                2
+            }
+
+            // *NOP variants (read and discard)
+            0x04 | 0x44 | 0x64 => { // zero page NOP
+                let _ = self.addr_zero_page(bus);
+                3
+            }
+            0x0C => { // absolute NOP
+                let addr = self.addr_absolute(bus);
+                let _ = bus.read(addr);
+                4
+            }
+            0x14 | 0x34 | 0x54 | 0x74 | 0xD4 | 0xF4 => { // zero page, X NOP
+                let _ = self.addr_zero_page_x(bus);
+                4
+            }
+            0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA => { // implied NOP
+                2
+            }
+            0x1C | 0x3C | 0x5C | 0x7C | 0xDC | 0xFC => { // absolute, X NOP
+                let (addr, extra_cycle) = self.addr_absolute_x(bus);
+                let _ = bus.read(addr);
+                4 + extra_cycle
+            }
+            0x80 | 0x82 | 0x89 | 0xC2 | 0xE2 => { // immediate NOP
+                let _ = self.addr_immediate(bus);
+                2
+            }
+
             _ => {
-                // Illegal/unofficial opcodes - treat as NOP
-                log::warn!("Unknown opcode: 0x{:02X}", opcode);
+                // Remaining illegal opcodes - treat as NOP but log
+                log::warn!("Unknown opcode: 0x{:02X} at PC 0x{:04X}", opcode, self.pc.wrapping_sub(1));
                 2
             }
         }
