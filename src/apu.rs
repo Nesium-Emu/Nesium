@@ -926,9 +926,14 @@ impl Apu {
     pub fn adjust_sample_rate(&mut self, queue_size: usize, target_queue_size: usize) {
         // Simple proportional control to match audio production to consumption
         let error = queue_size as f64 - target_queue_size as f64;
-        // Small adjustment factor to avoid oscillation
-        self.sample_adjustment = error * 0.00001;
-        // Clamp adjustment to prevent extreme values
+        // Adaptive adjustment factor - smaller for larger errors to avoid oscillation
+        let adjustment_factor = if error.abs() > 1000.0 {
+            0.000005 // Slower adjustment for large errors
+        } else {
+            0.00001  // Normal adjustment for small errors
+        };
+        self.sample_adjustment = error * adjustment_factor;
+        // Clamp adjustment to prevent extreme values that could cause audio artifacts
         self.sample_adjustment = self.sample_adjustment.clamp(-0.5, 0.5);
     }
 }
