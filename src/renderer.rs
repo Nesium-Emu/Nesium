@@ -1,19 +1,23 @@
+use sdl2::audio::{AudioQueue, AudioSpecDesired};
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 use sdl2::Sdl;
 
+const AUDIO_SAMPLE_RATE: i32 = 44_100;
+const AUDIO_BUFFER_SIZE: usize = 512;   // Queue this many samples at a time
+const MIN_QUEUE_SAMPLES: usize = 512;   // Start playback with this many samples queued
+
 pub struct Renderer {
     canvas: Canvas<Window>,
     texture_creator: sdl2::render::TextureCreator<sdl2::video::WindowContext>,
     sdl: Sdl,
-    pub audio_subsystem: sdl2::AudioSubsystem,
-    pub audio_queue: Vec<f32>,
-    show_fps: bool,
+    audio_device: Option<AudioQueue<f32>>,  // Use f32 directly to avoid conversion issues
+    audio_buffer: Vec<f32>,
+    audio_started: bool,
 }
 
 // Canonical NES palette (RGB values) - 64 colors
-// Source: https://wiki.nesdev.org/w/index.php/PPU_palettes
 const NES_PALETTE: [[u8; 3]; 64] = [
     [0x75, 0x75, 0x75], [0x27, 0x1B, 0x8F], [0x00, 0x00, 0xAB], [0x47, 0x00, 0x9F],
     [0x8F, 0x00, 0x77], [0xAB, 0x00, 0x13], [0xA7, 0x00, 0x00], [0x7F, 0x0B, 0x00],
@@ -51,29 +55,44 @@ impl Renderer {
 
         let texture_creator = canvas.texture_creator();
 
+        // Set up audio device with f32 samples
+        let audio_spec = AudioSpecDesired {
+            freq: Some(AUDIO_SAMPLE_RATE),
+            channels: Some(1), // Mono
+            samples: Some(1024), // SDL buffer size
+        };
+        
+        let audio_device = match audio_subsystem.open_queue::<f32, _>(None, &audio_spec) {
+            Ok(device) => {
+                // Start playback immediately - SDL will handle underruns with silence
+                device.resume();
+                log::info!("Audio initialized: {} Hz, mono, f32 format", AUDIO_SAMPLE_RATE);
+                Some(device)
+            }
+            Err(e) => {
+                log::warn!("Failed to initialize audio: {}", e);
+                None
+            }
+        };
+
         Ok(Self {
             canvas,
             texture_creator,
             sdl,
-            audio_subsystem,
-            audio_queue: Vec::new(),
-            show_fps: false,
+            audio_device,
+            audio_buffer: Vec::with_capacity(2048),
+            audio_started: true, // We start immediately now
         })
     }
     
     pub fn get_sdl_context(&self) -> &Sdl {
         &self.sdl
     }
-    
-    pub fn set_show_fps(&mut self, show: bool) {
-        self.show_fps = show;
-    }
 
     pub fn render_frame(&mut self, framebuffer: &[u8]) {
         // Convert palette indices to RGB
         let mut rgb_buffer = Vec::with_capacity(256 * 240 * 3);
         for &palette_idx in framebuffer.iter().take(256 * 240) {
-            // Palette index 0x00-0x0F: background palette, 0x10-0x1F: sprite palette
             let palette_idx = palette_idx & 0x3F;
             let rgb = NES_PALETTE[palette_idx as usize];
             rgb_buffer.push(rgb[0]);
@@ -81,18 +100,6 @@ impl Renderer {
             rgb_buffer.push(rgb[2]);
         }
 
-        // Create texture each frame to avoid lifetime issues
-        let texture = self.texture_creator
-            .create_texture_target(PixelFormatEnum::RGB24, 256, 240)
-            .expect("Failed to create texture");
-        
-        // Note: We can't update the texture after creation, so we need to create it with data
-        // For now, create and immediately use it
-        // Actually, we need to use update_streaming or similar
-        // Let's use create_texture_streaming instead
-        drop(texture); // Drop the target texture
-        
-        // Use streaming texture
         let mut texture = self.texture_creator
             .create_texture_streaming(PixelFormatEnum::RGB24, 256, 240)
             .expect("Failed to create streaming texture");
@@ -118,26 +125,48 @@ impl Renderer {
         
         self.canvas.present();
     }
-    
-    pub fn render_frame_with_fps(&mut self, framebuffer: &[u8], _fps: f32) {
-        self.render_frame(framebuffer);
-        // Note: FPS text rendering would require SDL2_ttf, skipping for now
-        if self.show_fps {
-            // Could add text rendering here
-        }
-    }
 
     pub fn queue_audio_samples(&mut self, samples: &[f32]) {
-        self.audio_queue.extend_from_slice(samples);
-    }
-
-    pub fn get_audio_samples(&mut self, max_samples: usize) -> Vec<f32> {
-        if self.audio_queue.len() > max_samples {
-            let samples = self.audio_queue.drain(..max_samples).collect();
-            samples
-        } else {
-            let samples = self.audio_queue.drain(..).collect();
-            samples
+        if samples.is_empty() {
+            return;
         }
+        
+        // Add samples to our buffer
+        self.audio_buffer.extend_from_slice(samples);
+        
+        // Queue to SDL when we have enough samples
+        if let Some(ref device) = self.audio_device {
+            if self.audio_buffer.len() >= AUDIO_BUFFER_SIZE {
+                // Queue all buffered samples
+                if let Err(e) = device.queue_audio(&self.audio_buffer) {
+                    log::warn!("Failed to queue audio: {}", e);
+                }
+                self.audio_buffer.clear();
+            }
+        }
+    }
+    
+    pub fn flush_audio(&mut self) {
+        if !self.audio_buffer.is_empty() {
+            if let Some(ref device) = self.audio_device {
+                device.queue_audio(&self.audio_buffer).ok();
+            }
+            self.audio_buffer.clear();
+        }
+    }
+    
+    // Get the current audio queue size in samples
+    pub fn get_audio_queue_size(&self) -> usize {
+        if let Some(ref device) = self.audio_device {
+            // size() returns bytes, f32 = 4 bytes per sample
+            device.size() as usize / 4
+        } else {
+            0
+        }
+    }
+    
+    pub fn get_target_queue_size(&self) -> usize {
+        // Target about 2 frames worth of audio (~1500 samples at 60fps)
+        1500
     }
 }

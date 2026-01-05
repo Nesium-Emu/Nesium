@@ -20,7 +20,6 @@ pub struct Emulator {
     last_frame_time: std::time::Instant,
     fps_counter: u32,
     fps: f32,
-    audio_sample_accumulator: f64, // For audio sampling
     trace: TraceState,
     total_ppu_cycles: u64, // Total PPU cycles since reset (for CYC counter)
 }
@@ -43,7 +42,6 @@ impl Emulator {
             last_frame_time: std::time::Instant::now(),
             fps_counter: 0,
             fps: 60.0,
-            audio_sample_accumulator: 0.0,
             trace: trace_state,
             total_ppu_cycles: 0,
         })
@@ -67,40 +65,40 @@ impl Emulator {
             // Accumulate CPU cycles (CPU runs at 1/3 PPU speed)
             self.cpu_cycle_accumulator += CPU_CYCLES_PER_PPU_CYCLE;
             
-            // Run CPU cycles when accumulator >= 1.0
+            // Run CPU when we have accumulated enough cycles
+            // CPU runs at 1/3 PPU rate, so 3 PPU cycles = 1 CPU cycle
             while self.cpu_cycle_accumulator >= 1.0 {
                 // Update trace PPU cycle count before instruction
                 if self.trace.enabled {
                     self.trace.ppu_cycle_count = self.total_ppu_cycles;
                 }
                 let cpu_cycles = self.cpu.step(&mut self.memory as &mut dyn crate::cpu::CpuBus, &mut self.trace);
-                self.cpu_cycle_accumulator -= 1.0;
                 
-                // Step APU for each CPU cycle
-                for _ in 0..cpu_cycles {
-                    let irq = self.memory.step_apu(1);
-                    if irq && (self.cpu.status & crate::cpu::FLAG_I) == 0 {
-                        self.cpu.trigger_irq(&mut self.memory as &mut dyn crate::cpu::CpuBus);
-                    }
-                }
+                // Subtract the actual number of CPU cycles used by this instruction
+                // This properly handles multi-cycle instructions
+                self.cpu_cycle_accumulator -= cpu_cycles as f64;
                 
-                // Generate audio samples at ~44.1kHz (sample every ~40.6 CPU cycles)
-                // CPU runs at 1.789 MHz, so 1.789 MHz / 44.1 kHz ≈ 40.6
-                const AUDIO_SAMPLE_RATE: f64 = 44_100.0;
-                const CPU_FREQ: f64 = 1_789_773.0;
-                const CYCLES_PER_SAMPLE: f64 = CPU_FREQ / AUDIO_SAMPLE_RATE;
-                
-                self.audio_sample_accumulator += cpu_cycles as f64;
-                while self.audio_sample_accumulator >= CYCLES_PER_SAMPLE {
-                    let sample = self.memory.apu.mix_samples();
-                    self.renderer.queue_audio_samples(&[sample]);
-                    self.audio_sample_accumulator -= CYCLES_PER_SAMPLE;
+                // Step APU for CPU cycles - it now handles its own sampling internally
+                let irq = self.memory.step_apu(cpu_cycles as u64);
+                if irq && (self.cpu.status & crate::cpu::FLAG_I) == 0 {
+                    self.cpu.trigger_irq(&mut self.memory as &mut dyn crate::cpu::CpuBus);
                 }
             }
 
             self.ppu_cycles_this_frame += 1;
             self.total_ppu_cycles += 1;
         }
+
+        // Get buffered audio samples from APU and queue them
+        let samples = self.memory.apu.take_samples();
+        if !samples.is_empty() {
+            self.renderer.queue_audio_samples(&samples);
+        }
+        
+        // Adjust APU sample rate based on audio queue size for sync
+        let queue_size = self.renderer.get_audio_queue_size();
+        let target_size = self.renderer.get_target_queue_size();
+        self.memory.apu.adjust_sample_rate(queue_size, target_size);
 
         // Copy framebuffer from PPU and render
         self.render_frame();
