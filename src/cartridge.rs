@@ -492,15 +492,9 @@ impl Cartridge {
         log::info!("iNES flags6: 0x{:02X}, mirroring bit (bit 0): {}, mirroring: {:?}", 
             flags6, flags6 & 0x01, mirroring);
         
-        // Workaround for bad SMB dumps with incorrect mirroring bit
-        // Super Mario Bros. is a horizontal scrolling game and should use Horizontal mirroring
-        let filename_lower = path.to_lowercase();
-        if filename_lower.contains("super mario bros") || filename_lower.contains("smb") {
-            if matches!(mirroring, Mirroring::Vertical) {
-                log::warn!("Overriding mirroring to Horizontal for known SMB ROM (header has incorrect Vertical bit)");
-                mirroring = Mirroring::Horizontal;
-            }
-        }
+        // Note: Horizontal scrolling games use VERTICAL mirroring (counterintuitive!)
+        // Vertical mirroring: nametables 0+2 share, 1+3 share - allows horizontal scrolling
+        // Horizontal mirroring: nametables 0+1 share, 2+3 share - allows vertical scrolling
         log::info!("Final mirroring: {:?}", mirroring);
 
         let has_ram = (flags6 & 0x02) != 0;
