@@ -286,6 +286,86 @@ fn get_opcode_info(opcode: u8) -> (&'static str, AddrMode) {
         0xF9 => ("SBC", AddrMode::AbsoluteY),
         0xFD => ("SBC", AddrMode::AbsoluteX),
         0xFE => ("INC", AddrMode::AbsoluteX),
+
+        // Unofficial opcodes
+        // SLO
+        0x03 => ("*SLO", AddrMode::IndirectX),
+        0x07 => ("*SLO", AddrMode::ZeroPage),
+        0x0F => ("*SLO", AddrMode::Absolute),
+        0x13 => ("*SLO", AddrMode::IndirectY),
+        0x17 => ("*SLO", AddrMode::ZeroPageX),
+        0x1B => ("*SLO", AddrMode::AbsoluteY),
+        0x1F => ("*SLO", AddrMode::AbsoluteX),
+        // RLA
+        0x23 => ("*RLA", AddrMode::IndirectX),
+        0x27 => ("*RLA", AddrMode::ZeroPage),
+        0x2F => ("*RLA", AddrMode::Absolute),
+        0x33 => ("*RLA", AddrMode::IndirectY),
+        0x37 => ("*RLA", AddrMode::ZeroPageX),
+        0x3B => ("*RLA", AddrMode::AbsoluteY),
+        0x3F => ("*RLA", AddrMode::AbsoluteX),
+        // SRE
+        0x43 => ("*SRE", AddrMode::IndirectX),
+        0x47 => ("*SRE", AddrMode::ZeroPage),
+        0x4F => ("*SRE", AddrMode::Absolute),
+        0x53 => ("*SRE", AddrMode::IndirectY),
+        0x57 => ("*SRE", AddrMode::ZeroPageX),
+        0x5B => ("*SRE", AddrMode::AbsoluteY),
+        0x5F => ("*SRE", AddrMode::AbsoluteX),
+        // RRA
+        0x63 => ("*RRA", AddrMode::IndirectX),
+        0x67 => ("*RRA", AddrMode::ZeroPage),
+        0x6F => ("*RRA", AddrMode::Absolute),
+        0x73 => ("*RRA", AddrMode::IndirectY),
+        0x77 => ("*RRA", AddrMode::ZeroPageX),
+        0x7B => ("*RRA", AddrMode::AbsoluteY),
+        0x7F => ("*RRA", AddrMode::AbsoluteX),
+        // SAX
+        0x83 => ("*SAX", AddrMode::IndirectX),
+        0x87 => ("*SAX", AddrMode::ZeroPage),
+        0x8F => ("*SAX", AddrMode::Absolute),
+        0x97 => ("*SAX", AddrMode::ZeroPageY),
+        // LAX
+        0xA3 => ("*LAX", AddrMode::IndirectX),
+        0xA7 => ("*LAX", AddrMode::ZeroPage),
+        0xAB => ("*LAX", AddrMode::Immediate),
+        0xAF => ("*LAX", AddrMode::Absolute),
+        0xB3 => ("*LAX", AddrMode::IndirectY),
+        0xB7 => ("*LAX", AddrMode::ZeroPageY),
+        0xBF => ("*LAX", AddrMode::AbsoluteY),
+        // DCP
+        0xC3 => ("*DCP", AddrMode::IndirectX),
+        0xC7 => ("*DCP", AddrMode::ZeroPage),
+        0xCF => ("*DCP", AddrMode::Absolute),
+        0xD3 => ("*DCP", AddrMode::IndirectY),
+        0xD7 => ("*DCP", AddrMode::ZeroPageX),
+        0xDB => ("*DCP", AddrMode::AbsoluteY),
+        0xDF => ("*DCP", AddrMode::AbsoluteX),
+        // ISB/ISC
+        0xE3 => ("*ISB", AddrMode::IndirectX),
+        0xE7 => ("*ISB", AddrMode::ZeroPage),
+        0xEB => ("*SBC", AddrMode::Immediate), // unofficial SBC
+        0xEF => ("*ISB", AddrMode::Absolute),
+        0xF3 => ("*ISB", AddrMode::IndirectY),
+        0xF7 => ("*ISB", AddrMode::ZeroPageX),
+        0xFB => ("*ISB", AddrMode::AbsoluteY),
+        0xFF => ("*ISB", AddrMode::AbsoluteX),
+        // ANC
+        0x0B | 0x2B => ("*ANC", AddrMode::Immediate),
+        // ALR
+        0x4B => ("*ALR", AddrMode::Immediate),
+        // ARR
+        0x6B => ("*ARR", AddrMode::Immediate),
+        // AXS/SBX
+        0xCB => ("*AXS", AddrMode::Immediate),
+        // NOP variants
+        0x04 | 0x44 | 0x64 => ("*NOP", AddrMode::ZeroPage),
+        0x0C => ("*NOP", AddrMode::Absolute),
+        0x14 | 0x34 | 0x54 | 0x74 | 0xD4 | 0xF4 => ("*NOP", AddrMode::ZeroPageX),
+        0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA => ("*NOP", AddrMode::Implied),
+        0x1C | 0x3C | 0x5C | 0x7C | 0xDC | 0xFC => ("*NOP", AddrMode::AbsoluteX),
+        0x80 | 0x82 | 0x89 | 0xC2 | 0xE2 => ("*NOP", AddrMode::Immediate),
+
         _ => ("???", AddrMode::Implied),
     }
 }

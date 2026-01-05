@@ -57,8 +57,6 @@ impl Emulator {
             let nmi_triggered = self.memory.step_ppu();
             
             if nmi_triggered {
-                debug!("NMI triggered at scanline {} cycle {}", 
-                    self.memory.ppu.scanline, self.memory.ppu.cycle);
                 self.cpu.trigger_nmi(&mut self.memory as &mut dyn crate::cpu::CpuBus);
             }
 
