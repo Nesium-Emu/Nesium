@@ -64,6 +64,13 @@ pub struct UxromMapper {
     prg_banks: u8, // Total number of PRG banks (16KB each)
 }
 
+pub struct CnromMapper {
+    mirroring: Mirroring,
+    has_chr_ram: bool,
+    chr_bank: u8, // Current CHR bank selected (8KB banks)
+    chr_banks: u8, // Total number of CHR banks (8KB each)
+}
+
 impl NromMapper {
     pub fn new(mirroring: Mirroring, has_chr_ram: bool) -> Self {
         Self {
@@ -139,6 +146,18 @@ impl UxromMapper {
     }
 }
 
+impl CnromMapper {
+    pub fn new(mirroring: Mirroring, has_chr_ram: bool, chr_rom_size: usize) -> Self {
+        let chr_banks = if has_chr_ram { 0 } else { (chr_rom_size / 0x2000) as u8 }; // Number of 8KB banks
+        Self {
+            mirroring,
+            has_chr_ram,
+            chr_bank: 0, // Start with first bank
+            chr_banks,
+        }
+    }
+}
+
 impl Mapper for UxromMapper {
     fn cpu_read(&self, addr: u16, prg_rom: &[u8]) -> u8 {
         if addr < 0xC000 {
@@ -178,6 +197,92 @@ impl Mapper for UxromMapper {
                 // Mirror if CHR ROM is smaller than 8KB
                 let mirrored_idx = idx % chr_rom.len();
                 chr_rom[mirrored_idx]
+            }
+        }
+    }
+
+    fn ppu_write(&mut self, addr: u16, value: u8, chr_ram: &mut [u8]) {
+        if self.has_chr_ram {
+            chr_ram[addr as usize % 0x2000] = value;
+        }
+        // CHR ROM is read-only
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+    
+    fn mirroring_changed(&self) -> bool {
+        false
+    }
+}
+
+impl Mapper for CnromMapper {
+    fn cpu_read(&self, addr: u16, prg_rom: &[u8]) -> u8 {
+        // CNROM: PRG ROM is not banked, always 32KB (or 16KB mirrored)
+        let addr = addr - 0x8000;
+        if prg_rom.len() == 0x4000 {
+            // 16KB PRG ROM, mirrored
+            prg_rom[addr as usize % 0x4000]
+        } else {
+            // 32KB PRG ROM
+            prg_rom[addr as usize]
+        }
+    }
+
+    fn cpu_write(&mut self, addr: u16, value: u8, _prg_rom: &[u8], _prg_ram: &mut [u8]) {
+        // CNROM: Writing to ANY address in $8000-$FFFF selects CHR bank (8KB banks)
+        // C reference: mask = mapper->CHR_banks > 4? 0xf : 0x3;
+        // C reference: CHR_ptrs[0] = CHR_ROM + 0x2000 * (value & mask);
+        // Critical: Must trigger on ANY write >= $8000, not just specific addresses
+        // Critical: Use mask 0x03 for 4 banks (Paperboy), 0x0F for >4 banks
+        if addr >= 0x8000 && !self.has_chr_ram {
+            // Determine mask: 0x03 for <=4 banks, 0x0F for >4 banks
+            let mask = if self.chr_banks > 4 { 0x0F } else { 0x03 };
+            let new_bank = (value & mask) as u8;
+            
+            // Always update bank (even if same) to match C reference behavior
+            if new_bank != self.chr_bank {
+                log::info!("CNROM CHR bank switch: {} -> {} (value=0x{:02X}, mask=0x{:02X}, chr_banks={})", 
+                    self.chr_bank, new_bank, value, mask, self.chr_banks);
+            }
+            self.chr_bank = new_bank;
+        }
+    }
+
+    fn ppu_read(&self, addr: u16, chr_rom: &[u8], chr_ram: &[u8]) -> u8 {
+        // CNROM: C reference does: return *(mapper->CHR_ptrs[0] + address);
+        // The address is added directly to the bank pointer without masking
+        // Address should be in 0x0000-0x1FFF range, but we mask for safety
+        let pattern_addr = addr & 0x1FFF;
+        
+        if self.has_chr_ram {
+            chr_ram[pattern_addr as usize]
+        } else {
+            // Bank-switchable CHR ROM (8KB banks)
+            // C reference: CHR_ptrs[0] = CHR_ROM + 0x2000 * (value & mask)
+            // Then: return *(CHR_ptrs[0] + address)
+            // The address is added directly to the bank pointer
+            let bank_offset = self.chr_bank as usize * 0x2000;
+            let idx = bank_offset + (pattern_addr as usize);
+            
+            // Log first few reads to verify bank selection
+            static mut READ_COUNT: u32 = 0;
+            unsafe {
+                if READ_COUNT < 20 {
+                    log::info!("CNROM ppu_read: addr=0x{:04X}, pattern_addr=0x{:04X}, bank={}, bank_offset=0x{:04X}, idx=0x{:04X}, chr_rom_len=0x{:04X}", 
+                        addr, pattern_addr, self.chr_bank, bank_offset, idx, chr_rom.len());
+                    READ_COUNT += 1;
+                }
+            }
+            
+            // Bounds check - should never exceed ROM size with proper banking
+            if idx < chr_rom.len() {
+                chr_rom[idx]
+            } else {
+                // Safety fallback - shouldn't happen with proper banking
+                log::warn!("CNROM ppu_read: idx 0x{:04X} exceeds chr_rom.len() 0x{:04X}", idx, chr_rom.len());
+                0
             }
         }
     }
@@ -863,7 +968,7 @@ impl Cartridge {
         let mapper_id = ((flags7 & 0xF0) >> 4) << 4 | (flags6 >> 4);
         // iNES byte 6 bit 0: 0 = Horizontal, 1 = Vertical
         // iNES byte 6 bit 3: 1 = Four-screen (ignores bit 0)
-        let mut mirroring = if (flags6 & 0x08) != 0 {
+        let mirroring = if (flags6 & 0x08) != 0 {
             Mirroring::FourScreen
         } else if (flags6 & 0x01) == 0 {
             // Bit 0 = 0 -> Horizontal (for horizontal scrolling games like SMB)
@@ -906,6 +1011,7 @@ impl Cartridge {
             0 => Box::new(NromMapper::new(mirroring, has_chr_ram)),
             1 => Box::new(Mmc1Mapper::new(mirroring, has_chr_ram, prg_rom_size, chr_rom_size)),
             2 => Box::new(UxromMapper::new(mirroring, has_chr_ram, prg_rom_size)),
+            3 => Box::new(CnromMapper::new(mirroring, has_chr_ram, chr_rom_size)),
             4 => Box::new(Mmc3Mapper::new(mirroring, has_chr_ram, prg_rom_size, chr_rom_size)),
             _ => return Err(CartridgeError::UnsupportedMapper(mapper_id)),
         };
