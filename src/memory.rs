@@ -12,6 +12,7 @@ pub struct MemoryBus {
     pub cartridge: Cartridge,
     pub prg_ram: [u8; 0x2000],
     pub chr_ram: [u8; 0x2000],
+    open_bus: u8, // Track open bus value for accurate emulation
 }
 
 impl MemoryBus {
@@ -19,14 +20,19 @@ impl MemoryBus {
         let mut ppu = Ppu::new();
         ppu.set_mirroring(cartridge.mirroring);
         log::info!("Nametable mirroring: {:?}", cartridge.mirroring);
+        
         Self {
-            ram: [0; 0x800],
+            // Initialize RAM with garbage values (0xFF) instead of zeros
+            // Real NES hardware has random RAM values on power-on, and some games
+            // like Paperboy are sensitive to this and may not boot with zero-initialized RAM
+            ram: [0xFF; 0x800],
             ppu,
             apu: Apu::new(),
             input: Input::new(),
             cartridge,
             prg_ram: [0; 0x2000],
             chr_ram: [0; 0x2000],
+            open_bus: 0x40, // Initialize to common open bus value
         }
     }
 
@@ -73,7 +79,7 @@ impl CpuBus for MemoryBus {
     }
     
     fn read(&mut self, addr: u16) -> u8 {
-        match addr {
+        let result = match addr {
             0x0000..=0x1FFF => {
                 // Internal RAM (mirrored)
                 self.ram[self.mirror_ram_addr(addr)]
@@ -95,9 +101,15 @@ impl CpuBus for MemoryBus {
                     self.ppu.read_register(addr, &mut no_chr_read)
                 }
             }
-            0x4000..=0x4013 | 0x4015 => {
+            0x4000..=0x4013 => {
                 // APU registers
                 self.apu.read_register(addr)
+            }
+            0x4015 => {
+                // APU status register - bit 5 is open bus (preserved from mem->bus)
+                // Reading from $4015 does not update the open bus
+                let apu_status = self.apu.read_register(addr);
+                (apu_status & !0x20) | (self.open_bus & 0x20) // Preserve bit 5 from open bus
             }
             0x4014 => {
                 // OAMDMA register read (not commonly used, but return value)
@@ -105,19 +117,28 @@ impl CpuBus for MemoryBus {
             }
             0x4016 => {
                 // Controller 1
-                self.input.read(0)
+                // Lower 5 bits: controller data, Upper 3 bits: open bus (preserved from mem->bus)
+                // Mindscape games (Paperboy, etc.) expect exactly 0x40 or 0x41
+                // Preserve upper 3 bits (0xE0) from open bus, OR in lower 5 bits from controller
+                let controller_bit = self.input.read(0) & 0x1F; // Lower 5 bits only
+                (self.open_bus & 0xE0) | controller_bit
             }
             0x4017 => {
                 // Controller 2 + APU frame counter
-                self.apu.read_register(0x4015) | self.input.read(1)
+                // Lower 5 bits: controller2 OR APU status, Upper 3 bits: open bus (preserved)
+                let apu_status = self.apu.read_register(0x4015);
+                let controller_bit = self.input.read(1) & 0x1F;
+                let combined = (apu_status | controller_bit) & 0x1F; // Lower 5 bits
+                // Preserve upper 3 bits (0xE0) from open bus, OR in lower 5 bits
+                (self.open_bus & 0xE0) | combined
             }
             0x4018..=0x401F => {
                 // APU and I/O test registers
-                0
+                self.open_bus // Return open bus
             }
             0x4020..=0x5FFF => {
                 // Expansion ROM (unused in most games)
-                0
+                self.open_bus // Return open bus
             }
             0x6000..=0x7FFF => {
                 // Cartridge RAM
@@ -125,14 +146,23 @@ impl CpuBus for MemoryBus {
                 if addr < self.prg_ram.len() as u16 {
                     self.prg_ram[addr as usize]
                 } else {
-                    0
+                    self.open_bus
                 }
             }
             0x8000..=0xFFFF => {
                 // Cartridge PRG ROM
                 self.cartridge.cpu_read(addr, &mut self.prg_ram)
             }
+        };
+        
+        // Update open bus with the result (except for some special cases)
+        // Controller reads preserve their open bus upper bits, so don't update for those
+        // APU status ($4015) does not update the open bus
+        if addr != 0x4015 && addr != 0x4016 && addr != 0x4017 {
+            self.open_bus = result;
         }
+        
+        result
     }
 
     fn write(&mut self, addr: u16, value: u8) {
