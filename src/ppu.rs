@@ -71,7 +71,7 @@ impl Ppu {
         Self {
             ctrl: 0,
             mask: 0,
-            status: 0,
+            status: 0x80, // Initialize with VBlank flag set (bit 7) - some games like Paperboy expect this on power-on
             oam_addr: 0,
             oam_data: 0,
             scroll: 0,
