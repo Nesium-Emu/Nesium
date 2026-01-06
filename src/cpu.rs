@@ -65,6 +65,7 @@ impl Cpu {
         self.sp = self.sp.wrapping_sub(3);
         self.status |= FLAG_I;
         self.pc = self.read_word(0xFFFC, bus);
+        log::info!("CPU Reset: PC=0x{:04X}, SP=0x{:02X}, Status=0x{:02X}", self.pc, self.sp, self.status);
     }
 
     pub fn step(&mut self, bus: &mut dyn CpuBus, trace_state: &mut TraceState) -> u64 {
