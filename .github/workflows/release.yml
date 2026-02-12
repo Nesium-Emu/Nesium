@@ -171,11 +171,7 @@ jobs:
       - name: Rename APK with version
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
-             nesium-android-${VERSION}.apk 2>/dev/null || \
           cp android/app/build/outputs/apk/release/app-release.apk \
-             nesium-android-${VERSION}.apk 2>/dev/null || \
-          cp android/app/build/outputs/apk/release/*.apk \
              nesium-android-${VERSION}.apk
 
       - name: Upload artifact

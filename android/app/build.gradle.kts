@@ -28,6 +28,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Sign with debug key for direct APK distribution
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
