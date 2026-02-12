@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#1A1A2A</color>
+    <color name="nesium_red">#CC0000</color>
+    <color name="nesium_dark">#1A1A2A</color>
+    <color name="nesium_darkest">#0A0A1A</color>
+    <color name="nesium_gray">#3A3A4A</color>
+</resources>

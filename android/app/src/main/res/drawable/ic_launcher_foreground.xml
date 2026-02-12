@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Background circle -->
+    <path
+        android:fillColor="#1A1A2A"
+        android:pathData="M54,54m-50,0a50,50 0,1 1,100 0a50,50 0,1 1,-100 0" />
+
+    <!-- NES Controller body -->
+    <path
+        android:fillColor="#3A3A4A"
+        android:pathData="M24,42 L84,42 Q88,42 88,46 L88,62 Q88,66 84,66 L24,66 Q20,66 20,62 L20,46 Q20,42 24,42 Z" />
+
+    <!-- D-Pad vertical -->
+    <path
+        android:fillColor="#1A1A1A"
+        android:pathData="M34,44 L40,44 L40,64 L34,64 Z" />
+
+    <!-- D-Pad horizontal -->
+    <path
+        android:fillColor="#1A1A1A"
+        android:pathData="M28,50 L46,50 L46,58 L28,58 Z" />
+
+    <!-- A Button -->
+    <path
+        android:fillColor="#CC0000"
+        android:pathData="M72,50m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
+
+    <!-- B Button -->
+    <path
+        android:fillColor="#CC0000"
+        android:pathData="M60,56m-5,0a5,5 0,1 1,10 0a5,5 0,1 1,-10 0" />
+
+    <!-- Start/Select pills -->
+    <path
+        android:fillColor="#2A2A3A"
+        android:pathData="M46,60 Q46,58 48,58 L52,58 Q54,58 54,60 Q54,62 52,62 L48,62 Q46,62 46,60 Z" />
+
+    <!-- NESIUM text -->
+    <path
+        android:fillColor="#CC0000"
+        android:pathData="M36,36 L72,36"
+        android:strokeWidth="1.5"
+        android:strokeColor="#CC0000" />
+</vector>
