@@ -6,3 +6,8 @@ logs/
 *Mesen2-master/
 .idea/
 website/
+
+# Android
+android/.gradle/
+android/local.properties
+android/app/src/main/jniLibs/
