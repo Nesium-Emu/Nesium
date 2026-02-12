@@ -26,7 +26,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             binary: nesium.exe
             archive: nesium-windows-x64.zip
-            archive-cmd: Compress-Archive -Path nesium.exe -DestinationPath nesium-windows-x64.zip
+            archive-cmd: Compress-Archive -Force -Path nesium.exe -DestinationPath nesium-windows-x64.zip
             shell: pwsh
 
           - os: ubuntu-latest
