@@ -117,9 +117,15 @@ jobs:
             binary: nesium
 
           - os: macos-latest
-            os-label: macOS
+            os-label: macOS-arm64
             target: aarch64-apple-darwin
             artifact-name: nesium-macos-arm64
+            binary: nesium
+
+          - os: macos-latest
+            os-label: macOS-x64
+            target: x86_64-apple-darwin
+            artifact-name: nesium-macos-x64
             binary: nesium
 
     runs-on: ${{ matrix.os }}
@@ -158,42 +164,6 @@ jobs:
         with:
           name: ${{ matrix.artifact-name }}
           path: target/${{ matrix.target }}/release/${{ matrix.binary }}
-          if-no-files-found: error
-
-  # ──────────────────────────────────────────────
-  # macOS x86_64 build (Intel Macs)
-  # ──────────────────────────────────────────────
-  build-desktop-macos-x64:
-    name: Build Desktop (macOS x86_64)
-    needs: check
-    runs-on: macos-13
-    steps:
-      - name: Clone repository
-        run: git clone --depth 1 --branch ${{ github.head_ref || github.ref_name }} ${{ env.NESIUM_REPO }} .
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin
-
-      - name: Cache cargo registry & build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: desktop-macos-x64-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: desktop-macos-x64-
-
-      - name: Build release binary
-        run: cargo build --release --target x86_64-apple-darwin --features desktop
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: nesium-macos-x64
-          path: target/x86_64-apple-darwin/release/nesium
           if-no-files-found: error
 
   # ──────────────────────────────────────────────
@@ -261,11 +231,7 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew 2>/dev/null || true
-          if [ -f "gradlew" ]; then
-            ./gradlew assembleDebug
-          else
-            gradle assembleDebug
-          fi
+          ./gradlew assembleDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -280,7 +246,7 @@ jobs:
   ci-ok:
     name: CI Passed
     if: always()
-    needs: [check, test, build-desktop, build-desktop-macos-x64, build-android]
+    needs: [check, test, build-desktop, build-android]
     runs-on: ubuntu-latest
     steps:
       - name: Verify all jobs succeeded
@@ -288,13 +254,11 @@ jobs:
           echo "Check:           ${{ needs.check.result }}"
           echo "Test:            ${{ needs.test.result }}"
           echo "Desktop builds:  ${{ needs.build-desktop.result }}"
-          echo "macOS x64:       ${{ needs.build-desktop-macos-x64.result }}"
           echo "Android:         ${{ needs.build-android.result }}"
 
           if [[ "${{ needs.check.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
              [[ "${{ needs.build-desktop.result }}" != "success" ]] || \
-             [[ "${{ needs.build-desktop-macos-x64.result }}" != "success" ]] || \
              [[ "${{ needs.build-android.result }}" != "success" ]]; then
             echo "::error::One or more CI jobs failed"
             exit 1

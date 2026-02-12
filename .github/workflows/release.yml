@@ -45,7 +45,7 @@ jobs:
             archive-cmd: tar czf nesium-macos-arm64.tar.gz nesium
             shell: bash
 
-          - os: macos-13
+          - os: macos-latest
             os-label: macOS-x64
             target: x86_64-apple-darwin
             binary: nesium
