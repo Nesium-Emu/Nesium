@@ -1,0 +1,246 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  NESIUM_REPO: https://github.com/Nesium-Emu/Nesium.git
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Desktop release builds
+  # ──────────────────────────────────────────────
+  build-desktop:
+    name: Release ${{ matrix.os-label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            os-label: Windows
+            target: x86_64-pc-windows-msvc
+            binary: nesium.exe
+            archive: nesium-windows-x64.zip
+            archive-cmd: Compress-Archive -Path nesium.exe -DestinationPath nesium-windows-x64.zip
+            shell: pwsh
+
+          - os: ubuntu-latest
+            os-label: Linux
+            target: x86_64-unknown-linux-gnu
+            binary: nesium
+            archive: nesium-linux-x64.tar.gz
+            archive-cmd: tar czf nesium-linux-x64.tar.gz nesium
+            shell: bash
+
+          - os: macos-latest
+            os-label: macOS-arm64
+            target: aarch64-apple-darwin
+            binary: nesium
+            archive: nesium-macos-arm64.tar.gz
+            archive-cmd: tar czf nesium-macos-arm64.tar.gz nesium
+            shell: bash
+
+          - os: macos-13
+            os-label: macOS-x64
+            target: x86_64-apple-darwin
+            binary: nesium
+            archive: nesium-macos-x64.tar.gz
+            archive-cmd: tar czf nesium-macos-x64.tar.gz nesium
+            shell: bash
+
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+
+    steps:
+      - name: Clone repository
+        run: git clone --depth 1 --branch ${{ github.ref_name }} ${{ env.NESIUM_REPO }} .
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: release-${{ matrix.os-label }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: release-${{ matrix.os-label }}-
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libxdo-dev libatk1.0-dev libglib2.0-dev \
+            libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev libasound2-dev
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} --features desktop
+
+      - name: Package archive
+        working-directory: target/${{ matrix.target }}/release
+        run: ${{ matrix.archive-cmd }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: target/${{ matrix.target }}/release/${{ matrix.archive }}
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────
+  # Android release APK
+  # ──────────────────────────────────────────────
+  build-android:
+    name: Release Android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        run: git clone --depth 1 --branch ${{ github.ref_name }} ${{ env.NESIUM_REPO }} .
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: >-
+            aarch64-linux-android,
+            armv7-linux-androideabi,
+            x86_64-linux-android,
+            i686-linux-android
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: release-android-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: release-android-rust-
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: release-gradle-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: release-gradle-
+
+      - name: Build native libraries (cargo-ndk)
+        run: |
+          cargo ndk \
+            -t arm64-v8a \
+            -t armeabi-v7a \
+            -t x86_64 \
+            -t x86 \
+            -o android/app/src/main/jniLibs \
+            build --release -p nesium-android
+
+      - name: Build release APK
+        working-directory: android
+        run: |
+          chmod +x gradlew 2>/dev/null || true
+          if [ -f "gradlew" ]; then
+            ./gradlew assembleRelease
+          else
+            gradle assembleRelease
+          fi
+
+      - name: Rename APK with version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
+             nesium-android-${VERSION}.apk 2>/dev/null || \
+          cp android/app/build/outputs/apk/release/app-release.apk \
+             nesium-android-${VERSION}.apk 2>/dev/null || \
+          cp android/app/build/outputs/apk/release/*.apk \
+             nesium-android-${VERSION}.apk
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nesium-android.apk
+          path: nesium-android-*.apk
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────
+  # Publish Forgejo Release
+  # ──────────────────────────────────────────────
+  publish:
+    name: Publish Release
+    needs: [build-desktop, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository (full history for changelog)
+        run: |
+          git clone ${{ env.NESIUM_REPO }} .
+          git fetch --tags
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect release files
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.apk" \) \
+            -exec cp {} release/ \;
+          echo "Release files:"
+          ls -lh release/
+
+      - name: Generate changelog
+        run: |
+          TAG="${{ github.ref_name }}"
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "## Changes since ${PREV_TAG}" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            git log --pretty=format:"- %s (%h)" ${PREV_TAG}..${TAG} >> CHANGELOG.md
+          else
+            echo "## Initial Release" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            git log --pretty=format:"- %s (%h)" >> CHANGELOG.md
+          fi
+          echo "" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "### Artifacts" >> CHANGELOG.md
+          echo "| Platform | File |" >> CHANGELOG.md
+          echo "|----------|------|" >> CHANGELOG.md
+          echo "| Windows x64 | \`nesium-windows-x64.zip\` |" >> CHANGELOG.md
+          echo "| Linux x64 | \`nesium-linux-x64.tar.gz\` |" >> CHANGELOG.md
+          echo "| macOS ARM64 (Apple Silicon) | \`nesium-macos-arm64.tar.gz\` |" >> CHANGELOG.md
+          echo "| macOS x64 (Intel) | \`nesium-macos-x64.tar.gz\` |" >> CHANGELOG.md
+          echo "| Android | \`nesium-android-*.apk\` |" >> CHANGELOG.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: CHANGELOG.md
+          files: release/*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: false

@@ -1,0 +1,302 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  NESIUM_REPO: https://github.com/Nesium-Emu/Nesium.git
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Quick checks: formatting, linting, compilation
+  # ──────────────────────────────────────────────
+  check:
+    name: Check (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: fmt
+            cmd: cargo fmt --all -- --check
+          - name: clippy
+            cmd: cargo clippy --workspace --all-targets --features desktop -- -D warnings
+    steps:
+      - name: Clone repository
+        run: git clone --depth 1 --branch ${{ github.head_ref || github.ref_name }} ${{ env.NESIUM_REPO }} .
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: check-${{ matrix.name }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: check-${{ matrix.name }}-
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libxdo-dev libatk1.0-dev libglib2.0-dev \
+            libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev libasound2-dev
+
+      - name: ${{ matrix.name }}
+        run: ${{ matrix.cmd }}
+
+  # ──────────────────────────────────────────────
+  # Unit & integration tests (library crate)
+  # ──────────────────────────────────────────────
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - name: Clone repository
+        run: git clone --depth 1 --branch ${{ github.head_ref || github.ref_name }} ${{ env.NESIUM_REPO }} .
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: test-
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libxdo-dev libatk1.0-dev libglib2.0-dev \
+            libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev libasound2-dev
+
+      - name: Run tests (core library)
+        run: cargo test --lib -p nesium --no-default-features
+
+      - name: Run tests (desktop features)
+        run: cargo test --lib -p nesium --features desktop
+
+  # ──────────────────────────────────────────────
+  # Desktop builds — Windows, Linux, macOS
+  # ──────────────────────────────────────────────
+  build-desktop:
+    name: Build Desktop (${{ matrix.os-label }})
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            os-label: Windows
+            target: x86_64-pc-windows-msvc
+            artifact-name: nesium-windows
+            binary: nesium.exe
+
+          - os: ubuntu-latest
+            os-label: Linux
+            target: x86_64-unknown-linux-gnu
+            artifact-name: nesium-linux
+            binary: nesium
+
+          - os: macos-latest
+            os-label: macOS
+            target: aarch64-apple-darwin
+            artifact-name: nesium-macos-arm64
+            binary: nesium
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Clone repository
+        run: git clone --depth 1 --branch ${{ github.head_ref || github.ref_name }} ${{ env.NESIUM_REPO }} .
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: desktop-${{ matrix.os-label }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: desktop-${{ matrix.os-label }}-
+
+      # Linux: install GTK3, ALSA, and other system deps for egui/cpal
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libxdo-dev libatk1.0-dev libglib2.0-dev \
+            libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev libasound2-dev
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} --features desktop
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────
+  # macOS x86_64 build (Intel Macs)
+  # ──────────────────────────────────────────────
+  build-desktop-macos-x64:
+    name: Build Desktop (macOS x86_64)
+    needs: check
+    runs-on: macos-13
+    steps:
+      - name: Clone repository
+        run: git clone --depth 1 --branch ${{ github.head_ref || github.ref_name }} ${{ env.NESIUM_REPO }} .
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: desktop-macos-x64-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: desktop-macos-x64-
+
+      - name: Build release binary
+        run: cargo build --release --target x86_64-apple-darwin --features desktop
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nesium-macos-x64
+          path: target/x86_64-apple-darwin/release/nesium
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────
+  # Android — build JNI libs + assemble APK
+  # ──────────────────────────────────────────────
+  build-android:
+    name: Build Android APK
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        run: git clone --depth 1 --branch ${{ github.head_ref || github.ref_name }} ${{ env.NESIUM_REPO }} .
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: >-
+            aarch64-linux-android,
+            armv7-linux-androideabi,
+            x86_64-linux-android,
+            i686-linux-android
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: android-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: android-rust-
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+
+      - name: Build native libraries (cargo-ndk)
+        run: |
+          cargo ndk \
+            -t arm64-v8a \
+            -t armeabi-v7a \
+            -t x86_64 \
+            -t x86 \
+            -o android/app/src/main/jniLibs \
+            build --release -p nesium-android
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew 2>/dev/null || true
+          if [ -f "gradlew" ]; then
+            ./gradlew assembleDebug
+          else
+            gradle assembleDebug
+          fi
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nesium-android-debug
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────
+  # Summary gate — all builds must pass
+  # ──────────────────────────────────────────────
+  ci-ok:
+    name: CI Passed
+    if: always()
+    needs: [check, test, build-desktop, build-desktop-macos-x64, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all jobs succeeded
+        run: |
+          echo "Check:           ${{ needs.check.result }}"
+          echo "Test:            ${{ needs.test.result }}"
+          echo "Desktop builds:  ${{ needs.build-desktop.result }}"
+          echo "macOS x64:       ${{ needs.build-desktop-macos-x64.result }}"
+          echo "Android:         ${{ needs.build-android.result }}"
+
+          if [[ "${{ needs.check.result }}" != "success" ]] || \
+             [[ "${{ needs.test.result }}" != "success" ]] || \
+             [[ "${{ needs.build-desktop.result }}" != "success" ]] || \
+             [[ "${{ needs.build-desktop-macos-x64.result }}" != "success" ]] || \
+             [[ "${{ needs.build-android.result }}" != "success" ]]; then
+            echo "::error::One or more CI jobs failed"
+            exit 1
+          fi
+          echo "All CI jobs passed!"
