@@ -395,6 +395,7 @@ impl RomEntry {
     }
 
     /// Draw a single character (simple bitmap font)
+    #[allow(clippy::too_many_arguments)]
     fn draw_char(rgba: &mut [u8], size: usize, ch: char, x: usize, y: usize, r: u8, g: u8, b: u8) {
         // Simple 5x7 bitmap font (only uppercase letters for initials)
         let glyph = match ch.to_ascii_uppercase() {
@@ -533,6 +534,7 @@ impl RomEntry {
     }
 
     /// Decode base64 logo to RGBA bytes
+    #[allow(dead_code)]
     pub fn decode_logo(&self) -> Option<Vec<u8>> {
         BASE64.decode(&self.logo_base64).ok()
     }

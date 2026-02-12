@@ -160,18 +160,18 @@ fn generate_icon_fallback() -> egui::IconData {
                     // Border (NES blue)
                     (26, 26, 46, 255)
                 }
-            } else if x >= 20 && x < 36 && y >= 24 && y < 40 {
+            } else if (20..36).contains(&x) && (24..40).contains(&y) {
                 // D-pad area
                 let dpad_x = x - 20;
                 let dpad_y = y - 24;
-                if (dpad_x >= 6 && dpad_x < 10 && dpad_y < 16) || // Up
-                   (dpad_x >= 6 && dpad_x < 10 && dpad_y >= 12 && dpad_y < 16) || // Down
-                   (dpad_x < 4 && dpad_y >= 6 && dpad_y < 10) || // Left
-                   (dpad_x >= 12 && dpad_x < 16 && dpad_y >= 6 && dpad_y < 10)
+                if ((6..10).contains(&dpad_x) && dpad_y < 16) || // Up
+                   ((6..10).contains(&dpad_x) && (12..16).contains(&dpad_y)) || // Down
+                   (dpad_x < 4 && (6..10).contains(&dpad_y)) || // Left
+                   ((12..16).contains(&dpad_x) && (6..10).contains(&dpad_y))
                 {
                     // Right
                     (100, 180, 255, 255) // NES blue
-                } else if dpad_x >= 4 && dpad_x < 12 && dpad_y >= 4 && dpad_y < 12 {
+                } else if (4..12).contains(&dpad_x) && (4..12).contains(&dpad_y) {
                     (100, 180, 255, 200) // Center (lighter)
                 } else {
                     (0, 0, 0, 0) // Transparent

@@ -184,6 +184,7 @@ impl Config {
     }
 
     /// Remove a ROM directory
+    #[allow(dead_code)]
     pub fn remove_rom_dir(&mut self, dir: &Path) {
         self.rom_dirs.retain(|d| d != dir);
     }
@@ -201,6 +202,7 @@ impl Config {
     }
 
     /// Toggle favorite status
+    #[allow(dead_code)]
     pub fn toggle_favorite(&mut self, rom_path: PathBuf) -> bool {
         if self.favorites.contains(&rom_path) {
             self.favorites.remove(&rom_path);

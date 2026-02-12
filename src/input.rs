@@ -19,6 +19,12 @@ pub struct ControllerState {
     read_count: u8,
 }
 
+impl Default for ControllerState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ControllerState {
     pub fn new() -> Self {
         Self {
@@ -38,8 +44,7 @@ impl ControllerState {
     /// Latch current button states into shift register
     /// Button order: A, B, Select, Start, Up, Down, Left, Right (bits 0-7)
     pub fn latch(&mut self) {
-        self.shift_register = 0
-            | (if self.a { 0x01 } else { 0 })
+        self.shift_register = (if self.a { 0x01 } else { 0 })
             | (if self.b { 0x02 } else { 0 })
             | (if self.select { 0x04 } else { 0 })
             | (if self.start { 0x08 } else { 0 })
@@ -73,6 +78,12 @@ impl ControllerState {
                 0
             }
         }
+    }
+}
+
+impl Default for Input {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

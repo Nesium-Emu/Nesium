@@ -243,7 +243,7 @@ impl Mapper for CnromMapper {
         if addr >= 0x8000 && !self.has_chr_ram {
             // Determine mask: 0x03 for <=4 banks, 0x0F for >4 banks
             let mask = if self.chr_banks > 4 { 0x0F } else { 0x03 };
-            let new_bank = (value & mask) as u8;
+            let new_bank = value & mask;
 
             // Always update bank (even if same) to match C reference behavior
             if new_bank != self.chr_bank {
@@ -362,6 +362,7 @@ pub struct Mmc1Mapper {
     mirroring_changed_flag: bool,
 
     // For ignoring consecutive writes on same cycle
+    #[allow(dead_code)]
     last_write_cycle: u64,
 }
 

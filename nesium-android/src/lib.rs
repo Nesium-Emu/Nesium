@@ -66,7 +66,7 @@ impl NesEmulator {
                     .step(&mut self.memory as &mut dyn CpuBus, &mut self.trace);
                 self.cpu_cycle_accumulator -= cpu_cycles as f64;
 
-                let irq = self.memory.step_apu(cpu_cycles as u64);
+                let irq = self.memory.step_apu(cpu_cycles);
                 if irq && (self.cpu.status & FLAG_I) == 0 {
                     self.cpu.trigger_irq(&mut self.memory as &mut dyn CpuBus);
                 }
@@ -334,10 +334,10 @@ fn run_frame_inner(env: JNIEnv, framebuffer: JIntArray) -> jint {
         // Log periodically
         static FRAME_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let frame = FRAME_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if frame % 60 == 0 {
+        if frame.is_multiple_of(60) {
             let mut color_counts = std::collections::HashMap::new();
-            for i in 0..pixel_count {
-                *color_counts.entry(fb[i]).or_insert(0) += 1;
+            for &pixel in &fb[..pixel_count] {
+                *color_counts.entry(pixel).or_insert(0) += 1;
             }
             log::info!("Frame {}: unique_colors={}", frame, color_counts.len());
         }
@@ -382,7 +382,7 @@ fn get_audio_samples_inner(env: JNIEnv, samples: jfloatArray) -> jint {
         if count > 0 {
             if let Err(e) = unsafe {
                 env.set_float_array_region(
-                    &jni::objects::JFloatArray::from_raw(samples),
+                    jni::objects::JFloatArray::from_raw(samples),
                     0,
                     &audio_samples[..count],
                 )

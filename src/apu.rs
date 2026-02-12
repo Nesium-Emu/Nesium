@@ -40,16 +40,16 @@ const TND_LUT_SIZE: usize = 203;
 
 fn compute_pulse_lut() -> [f32; PULSE_LUT_SIZE] {
     let mut lut = [0.0f32; PULSE_LUT_SIZE];
-    for i in 1..PULSE_LUT_SIZE {
-        lut[i] = 95.52 / (8128.0 / (i as f32) + 100.0);
+    for (i, val) in lut.iter_mut().enumerate().skip(1) {
+        *val = 95.52 / (8128.0 / (i as f32) + 100.0);
     }
     lut
 }
 
 fn compute_tnd_lut() -> [f32; TND_LUT_SIZE] {
     let mut lut = [0.0f32; TND_LUT_SIZE];
-    for i in 1..TND_LUT_SIZE {
-        lut[i] = 163.67 / (24329.0 / (i as f32) + 100.0);
+    for (i, val) in lut.iter_mut().enumerate().skip(1) {
+        *val = 163.67 / (24329.0 / (i as f32) + 100.0);
     }
     lut
 }
@@ -79,6 +79,7 @@ impl FirstOrderFilter {
     }
 
     // Low-pass filter
+    #[allow(dead_code)]
     fn low_pass(cutoff_hz: f32, sample_rate: f32) -> Self {
         let c = sample_rate / (std::f32::consts::PI * cutoff_hz);
         let a0 = 1.0 / (1.0 + c);
@@ -430,10 +431,8 @@ impl DmcChannel {
                     if self.output_level <= 125 {
                         self.output_level += 2;
                     }
-                } else {
-                    if self.output_level >= 2 {
-                        self.output_level -= 2;
-                    }
+                } else if self.output_level >= 2 {
+                    self.output_level -= 2;
                 }
             }
 
@@ -480,19 +479,17 @@ impl Envelope {
             self.start = false;
             self.decay_counter = 15;
             self.divider = self.volume;
-        } else {
-            if self.divider == 0 {
-                self.divider = self.volume;
-                if self.decay_counter == 0 {
-                    if self.loop_flag {
-                        self.decay_counter = 15;
-                    }
-                } else {
-                    self.decay_counter -= 1;
+        } else if self.divider == 0 {
+            self.divider = self.volume;
+            if self.decay_counter == 0 {
+                if self.loop_flag {
+                    self.decay_counter = 15;
                 }
             } else {
-                self.divider -= 1;
+                self.decay_counter -= 1;
             }
+        } else {
+            self.divider -= 1;
         }
     }
 }
@@ -522,10 +519,8 @@ impl Sweep {
             timer.wrapping_add(change)
         };
 
-        if self.divider == 0 && self.enabled && self.shift > 0 && !mute {
-            if target <= 0x7FF {
-                *timer = target;
-            }
+        if self.divider == 0 && self.enabled && self.shift > 0 && !mute && target <= 0x7FF {
+            *timer = target;
         }
 
         if self.divider == 0 || self.reload {
@@ -534,6 +529,12 @@ impl Sweep {
         } else {
             self.divider -= 1;
         }
+    }
+}
+
+impl Default for Apu {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -838,9 +839,7 @@ impl Apu {
                 self.sample_buffer.push(sample);
             }
 
-            if self.cycle_count < u64::MAX {
-                self.cycle_count += 1;
-            }
+            self.cycle_count = self.cycle_count.saturating_add(1);
         }
 
         irq

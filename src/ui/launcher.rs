@@ -27,6 +27,7 @@ pub struct LauncherUi {
     search_query: String,
 
     /// Currently selected ROM index (in filtered_roms)
+    #[allow(dead_code)]
     selected_index: Option<usize>,
 
     /// Texture cache for ROM logos
@@ -45,6 +46,7 @@ pub struct LauncherUi {
     show_add_dir: bool,
 
     /// Scroll position
+    #[allow(dead_code)]
     scroll_offset: f32,
 }
 

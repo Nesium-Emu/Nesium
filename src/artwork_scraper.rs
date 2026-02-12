@@ -9,6 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Artwork source
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ArtworkSource {
     /// NESFiles.com - cartridge and box photos

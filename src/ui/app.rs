@@ -192,7 +192,7 @@ impl EmulationState {
                 );
                 self.cpu_cycle_accumulator -= cpu_cycles as f64;
 
-                let irq = self.memory.step_apu(cpu_cycles as u64);
+                let irq = self.memory.step_apu(cpu_cycles);
                 if irq && (self.cpu.status & crate::cpu::FLAG_I) == 0 {
                     self.cpu
                         .trigger_irq(&mut self.memory as &mut dyn crate::cpu::CpuBus);
@@ -263,6 +263,7 @@ pub enum NesButton {
 #[derive(Default)]
 struct DialogState {
     show_about: bool,
+    #[allow(dead_code)]
     show_settings: bool,
     show_input_config: bool,
     input_config_binding: Option<NesButton>,

@@ -288,6 +288,7 @@ impl AudioOutput {
     }
 
     /// Get the output sample rate
+    #[allow(dead_code)]
     pub fn sample_rate(&self) -> u32 {
         self.output_sample_rate
     }
