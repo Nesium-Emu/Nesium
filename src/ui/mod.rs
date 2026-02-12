@@ -7,6 +7,7 @@
 mod app;
 mod settings;
 mod audio;
+mod launcher;
 
 pub use app::NesiumApp;
 

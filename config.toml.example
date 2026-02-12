@@ -1,0 +1,90 @@
+# Nesium Configuration File
+# This file is automatically created and managed by Nesium
+# Location: %APPDATA%\nesium\config.toml (Windows) or ~/.config/nesium/config.toml (Linux/Mac)
+
+# ROM directories to scan for games
+# Add your ROM collection directories here
+# Example:
+# rom_dirs = [
+#     "C:\\Games\\NES ROMs",
+#     "D:\\Emulation\\NES",
+# ]
+rom_dirs = []
+
+# Recently played ROMs (automatically managed)
+# The launcher will show these for quick access
+recent_roms = []
+
+# Favorite ROMs (star them in the launcher)
+# Example:
+# favorites = [
+#     "C:\\Games\\NES ROMs\\Super Mario Bros.nes",
+# ]
+favorites = []
+
+# Show the ROM browser on startup
+# Set to false to go directly to the emulator window
+show_launcher_on_startup = true
+
+# UI Configuration
+[ui]
+# View mode: "grid" or "list"
+view_mode = "grid"
+
+# Grid columns (0 = auto-calculate based on window width)
+grid_columns = 0
+
+# Sort mode: "name", "recent", or "favorite"
+sort_mode = "name"
+
+# Dark theme (true = dark, false = light)
+dark_theme = true
+
+# Artwork Configuration
+[artwork]
+# Enable downloading artwork from online sources (opt-in for privacy)
+# When enabled, Nesium will download box art/cartridge labels from NESFiles.com
+enable_online = false
+
+# Preferred artwork type: "box", "cartridge", "screenshot", or "title"
+preferred_type = "cartridge"
+
+# Auto-download artwork during ROM scanning (requires enable_online = true)
+auto_download = false
+
+# ============================================================================
+# QUICK START GUIDE
+# ============================================================================
+#
+# 1. First Launch:
+#    - Run Nesium
+#    - Click "Add ROM Directory" in the launcher
+#    - Select your NES ROM folder
+#    - Nesium will scan and cache all ROMs with thumbnails
+#
+# 2. ROM Browser Features:
+#    - Grid view shows cartridge-style icons extracted from CHR ROM
+#    - Click any game to launch immediately
+#    - Search box filters by game name
+#    - Star icon marks favorites
+#    - Recent games appear at the top
+#
+# 3. Keyboard Shortcuts:
+#    - F11: Toggle between ROM browser and emulator
+#    - ESC: Pause/resume emulation
+#    - F: Fast forward (hold)
+#    - Ctrl+R: Reset current game
+#    - Shift+Space: Frame advance
+#
+# 4. Cache:
+#    - ROM metadata and icons are cached in:
+#      %APPDATA%\nesium\roms_cache.json (Windows)
+#      ~/.cache/nesium/roms_cache.json (Linux/Mac)
+#    - Click "Rescan" in the launcher to refresh
+#
+# 5. Supported Formats:
+#    - .nes files (iNES 1.0 format)
+#    - .zip files (containing .nes ROMs)
+#
+# ============================================================================
+

@@ -7,8 +7,10 @@
 //! - Settings dialogs and input configuration
 
 use super::audio::AudioOutput;
+use super::launcher::LauncherUi;
 use super::settings::{KeyBindings, Settings, Theme};
 use crate::cartridge::Cartridge;
+use crate::config::Config;
 use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 use crate::trace::TraceState;
@@ -203,9 +205,17 @@ struct DialogState {
     input_config_binding: Option<NesButton>,
 }
 
+/// Application mode
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum AppMode {
+    Launcher,
+    Emulation,
+}
+
 /// Main application state
 pub struct NesiumApp {
     settings: Settings,
+    config: Config,
     emulation: Option<EmulationState>,
     texture: Option<TextureHandle>,
     audio: Option<AudioOutput>,
@@ -235,6 +245,11 @@ pub struct NesiumApp {
     
     // Theme applied flag
     theme_applied: bool,
+    
+    // Launcher UI
+    launcher: LauncherUi,
+    mode: AppMode,
+    launcher_initialized: bool,
 }
 
 impl Default for NesiumApp {
@@ -250,6 +265,7 @@ impl NesiumApp {
 
     pub fn with_rom(rom_path: Option<PathBuf>) -> Self {
         let settings = Settings::load();
+        let config = Config::load();
         let audio = AudioOutput::new();
         
         if let Some(ref audio) = audio {
@@ -260,8 +276,18 @@ impl NesiumApp {
             log::warn!("Failed to initialize audio output");
         }
         
+        // Determine initial mode
+        let mode = if rom_path.is_some() {
+            AppMode::Emulation
+        } else if config.show_launcher_on_startup && !config.rom_dirs.is_empty() {
+            AppMode::Launcher
+        } else {
+            AppMode::Emulation
+        };
+        
         Self {
             settings,
+            config,
             emulation: None,
             texture: None,
             audio,
@@ -279,6 +305,9 @@ impl NesiumApp {
             pending_rom: rom_path,
             pressed_keys: std::collections::HashSet::new(),
             theme_applied: false,
+            launcher: LauncherUi::new(),
+            mode,
+            launcher_initialized: false,
         }
     }
 
@@ -300,9 +329,16 @@ impl NesiumApp {
                 self.load_sram_for(&mut emulation);
                 
                 self.emulation = Some(emulation);
-                self.settings.add_recent_rom(path);
+                self.settings.add_recent_rom(path.clone());
+                self.config.add_recent(path);
+                if let Err(e) = self.config.save() {
+                    log::error!("Failed to save config: {}", e);
+                }
                 self.paused = false;
                 self.frame_count = 0;
+                
+                // Switch to emulation mode
+                self.mode = AppMode::Emulation;
             }
             Err(e) => {
                 log::error!("Failed to load ROM: {}", e);
@@ -517,6 +553,15 @@ impl NesiumApp {
             if i.key_pressed(egui::Key::Space) && i.modifiers.shift {
                 self.frame_advance_requested = true;
             }
+            
+            // F11 - Toggle launcher/emulation mode
+            if i.key_pressed(egui::Key::F11) {
+                self.mode = if self.mode == AppMode::Launcher {
+                    AppMode::Emulation
+                } else {
+                    AppMode::Launcher
+                };
+            }
 
             // Fast forward toggle
             self.fast_forward = i.key_down(egui::Key::F);
@@ -528,6 +573,24 @@ impl NesiumApp {
             egui::menu::bar(ui, |ui| {
                 // File menu
                 ui.menu_button("File", |ui| {
+                    // ROM Browser toggle
+                    let browser_text = if self.mode == AppMode::Launcher {
+                        "🎮 Back to Emulation"
+                    } else {
+                        "📚 ROM Browser"
+                    };
+                    
+                    if ui.button(browser_text).clicked() {
+                        self.mode = if self.mode == AppMode::Launcher {
+                            AppMode::Emulation
+                        } else {
+                            AppMode::Launcher
+                        };
+                        ui.close_menu();
+                    }
+                    
+                    ui.separator();
+                    
                     if ui.button("📂 Open ROM...").clicked() {
                         self.open_rom_dialog();
                         ui.close_menu();
@@ -713,6 +776,26 @@ impl NesiumApp {
     }
 
     fn render_central_panel(&mut self, ctx: &egui::Context) {
+        // Check for launcher mode
+        if self.mode == AppMode::Launcher {
+            // Initialize launcher on first show
+            if !self.launcher_initialized {
+                self.launcher.load_cached();
+                if !self.config.rom_dirs.is_empty() {
+                    self.launcher.start_scan(&self.config);
+                }
+                self.launcher_initialized = true;
+            }
+            
+            // Show launcher UI
+            if let Some(rom_path) = self.launcher.show(ctx, &mut self.config) {
+                log::info!("Loading ROM from launcher: {}", rom_path.display());
+                self.load_rom(rom_path);
+            }
+            return;
+        }
+        
+        // Emulation mode - show NES screen
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(Color32::from_rgb(8, 8, 12)))
             .show(ctx, |ui| {
