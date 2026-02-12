@@ -1,0 +1,19 @@
+[package]
+name = "nesium-android"
+version = "0.1.0"
+edition = "2021"
+description = "Nesium Android JNI bindings"
+
+[lib]
+crate-type = ["cdylib"]
+name = "nesium_android"
+
+[dependencies]
+jni = "0.21"
+log = "0.4"
+android_logger = "0.13"
+
+# Reference the main nesium crate for core emulation
+[dependencies.nesium]
+path = ".."
+default-features = false
