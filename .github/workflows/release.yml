@@ -186,7 +186,7 @@ jobs:
           if-no-files-found: error
 
   # ──────────────────────────────────────────────
-  # Publish Forgejo Release
+  # Publish GitHub Release
   # ──────────────────────────────────────────────
   publish:
     name: Publish Release
