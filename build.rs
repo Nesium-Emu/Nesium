@@ -10,7 +10,9 @@ fn main() {
             res.set_icon("resources/NESIUM.ico");
             if let Err(e) = res.compile() {
                 eprintln!("Warning: Failed to embed icon in executable: {}", e);
-                eprintln!("The application will still work, but the .exe may not have the custom icon.");
+                eprintln!(
+                    "The application will still work, but the .exe may not have the custom icon."
+                );
             } else {
                 println!("cargo:warning=Successfully embedded NESIUM.ico in Windows executable");
             }

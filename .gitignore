@@ -6,6 +6,7 @@ logs/
 *Mesen2-master/
 .idea/
 website/
+logs_*/
 
 # Android
 android/.gradle/

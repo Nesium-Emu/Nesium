@@ -14,14 +14,14 @@ const DUTY_TABLE: [[u8; 8]; 4] = [
 
 // Triangle wave sequence (32 steps)
 const TRIANGLE_SEQUENCE: [u8; 32] = [
-    15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+    15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+    13, 14, 15,
 ];
 
 // Length counter lookup table
 const LENGTH_TABLE: [u8; 32] = [
-    10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14,
-    12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30,
+    10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22,
+    192, 24, 72, 26, 16, 28, 32, 30,
 ];
 
 // Noise period table (NTSC)
@@ -77,8 +77,8 @@ impl FirstOrderFilter {
             a1: (1.0 - c) * a0,
         }
     }
-    
-    // Low-pass filter  
+
+    // Low-pass filter
     fn low_pass(cutoff_hz: f32, sample_rate: f32) -> Self {
         let c = sample_rate / (std::f32::consts::PI * cutoff_hz);
         let a0 = 1.0 / (1.0 + c);
@@ -109,7 +109,7 @@ pub struct Apu {
     pub dmc: DmcChannel,
 
     // Frame sequencer (tracks exact CPU cycles)
-    pub cycle_count: u64,  // Total CPU cycles since reset
+    pub cycle_count: u64,         // Total CPU cycles since reset
     pub frame_counter_mode: bool, // false = 4-step, true = 5-step
     pub frame_counter_interrupt: bool,
     pub irq_inhibit: bool,
@@ -119,14 +119,14 @@ pub struct Apu {
     pub sample_counter: f64,
     pub cycles_per_sample: f64,
     pub sample_buffer: Vec<f32>,
-    
+
     // Adaptive sampling for sync
     pub sample_adjustment: f64,
-    
+
     // Filters applied at OUTPUT sample rate (44.1kHz)
-    pub high_pass_90hz: FirstOrderFilter,   // NES hardware high-pass
-    pub high_pass_440hz: FirstOrderFilter,  // NES hardware high-pass
-    
+    pub high_pass_90hz: FirstOrderFilter, // NES hardware high-pass
+    pub high_pass_440hz: FirstOrderFilter, // NES hardware high-pass
+
     // Mixer lookup tables
     pulse_lut: [f32; PULSE_LUT_SIZE],
     tnd_lut: [f32; TND_LUT_SIZE],
@@ -142,7 +142,7 @@ pub struct PulseChannel {
     pub timer: u16,
     pub timer_counter: u16,
     pub duty_cycle: u8,
-    pub duty_step: u8,  // Current step in 8-step sequence
+    pub duty_step: u8, // Current step in 8-step sequence
     pub constant_volume: bool,
     pub channel_id: u8, // 1 or 2 (for sweep negate difference)
     pub mute: bool,
@@ -200,7 +200,7 @@ pub struct Envelope {
     pub start: bool,
     pub loop_flag: bool,
     pub constant_volume: bool,
-    pub volume: u8,      // Also divider period
+    pub volume: u8, // Also divider period
     pub decay_counter: u8,
     pub divider: u8,
 }
@@ -257,7 +257,7 @@ impl PulseChannel {
         } else {
             self.target_period = self.timer.wrapping_add(change);
         }
-        
+
         // Mute if timer < 8 or target > 0x7FF
         self.mute = self.timer < 8 || self.target_period > 0x7FF;
     }
@@ -392,22 +392,22 @@ impl DmcChannel {
 
     fn clock(&mut self, cpu_read: &mut impl FnMut(u16) -> u8) -> bool {
         let mut irq = false;
-        
+
         // Memory reader - fill sample buffer if empty and bytes remaining
         if self.enabled && self.sample_buffer_empty && self.bytes_remaining > 0 {
             // Read sample byte (this would stall CPU for 4 cycles in real hardware)
             self.sample_buffer = cpu_read(self.current_address);
             self.sample_buffer_empty = false;
-            
+
             // Increment address with wrap
             self.current_address = if self.current_address == 0xFFFF {
                 0x8000
             } else {
                 self.current_address + 1
             };
-            
+
             self.bytes_remaining -= 1;
-            
+
             // Handle end of sample
             if self.bytes_remaining == 0 {
                 if self.loop_flag {
@@ -419,11 +419,11 @@ impl DmcChannel {
                 }
             }
         }
-        
+
         // Output unit timer
         if self.rate_counter == 0 {
             self.rate_counter = self.rate;
-            
+
             // Clock output unit
             if !self.silence {
                 if (self.shift_register & 0x01) != 0 {
@@ -436,10 +436,10 @@ impl DmcChannel {
                     }
                 }
             }
-            
+
             self.shift_register >>= 1;
             self.bits_remaining -= 1;
-            
+
             // Start new output cycle
             if self.bits_remaining == 0 {
                 self.bits_remaining = 8;
@@ -454,7 +454,7 @@ impl DmcChannel {
         } else {
             self.rate_counter -= 1;
         }
-        
+
         irq
     }
 
@@ -521,13 +521,13 @@ impl Sweep {
         } else {
             timer.wrapping_add(change)
         };
-        
+
         if self.divider == 0 && self.enabled && self.shift > 0 && !mute {
             if target <= 0x7FF {
                 *timer = target;
             }
         }
-        
+
         if self.divider == 0 || self.reload {
             self.divider = self.period;
             self.reload = false;
@@ -626,7 +626,7 @@ impl Apu {
                 self.pulse1.envelope.start = true;
                 self.pulse1.update_target_period();
             }
-            
+
             // Pulse 2: $4004-$4007
             0x4004 => {
                 self.pulse2.duty_cycle = (value >> 6) & 0x03;
@@ -656,7 +656,7 @@ impl Apu {
                 self.pulse2.envelope.start = true;
                 self.pulse2.update_target_period();
             }
-            
+
             // Triangle: $4008-$400B
             0x4008 => {
                 self.triangle.length_counter_halt = (value & 0x80) != 0;
@@ -666,13 +666,14 @@ impl Apu {
                 self.triangle.timer = (self.triangle.timer & 0xFF00) | value as u16;
             }
             0x400B => {
-                self.triangle.timer = (self.triangle.timer & 0x00FF) | (((value & 0x07) as u16) << 8);
+                self.triangle.timer =
+                    (self.triangle.timer & 0x00FF) | (((value & 0x07) as u16) << 8);
                 if self.triangle.enabled {
                     self.triangle.length_counter = LENGTH_TABLE[((value >> 3) & 0x1F) as usize];
                 }
                 self.triangle.linear_counter_reload_flag = true;
             }
-            
+
             // Noise: $400C-$400F
             0x400C => {
                 self.noise.length_counter_halt = (value & 0x20) != 0;
@@ -690,7 +691,7 @@ impl Apu {
                 }
                 self.noise.envelope.start = true;
             }
-            
+
             // DMC: $4010-$4013
             0x4010 => {
                 self.dmc.irq_enabled = (value & 0x80) != 0;
@@ -709,7 +710,7 @@ impl Apu {
             0x4013 => {
                 self.dmc.sample_length = ((value as u16) << 4) | 1;
             }
-            
+
             // Status: $4015
             0x4015 => {
                 self.pulse1.enabled = (value & 0x01) != 0;
@@ -717,7 +718,7 @@ impl Apu {
                 self.triangle.enabled = (value & 0x04) != 0;
                 self.noise.enabled = (value & 0x08) != 0;
                 self.dmc.enabled = (value & 0x10) != 0;
-                
+
                 if !self.pulse1.enabled {
                     self.pulse1.length_counter = 0;
                 }
@@ -738,7 +739,7 @@ impl Apu {
                 }
                 self.dmc.irq_occurred = false;
             }
-            
+
             // Frame counter: $4017
             0x4017 => {
                 self.frame_counter_mode = (value & 0x80) != 0;
@@ -766,17 +767,17 @@ impl Apu {
                 }
                 self.cycle_count = 0;
             }
-            
+
             // Clock pulse timers every other CPU cycle (they run at APU rate = CPU/2)
             if self.cycle_count & 1 == 1 {
                 self.pulse1.clock_timer();
                 self.pulse2.clock_timer();
                 self.noise.clock_timer();
             }
-            
+
             // Triangle timer runs at CPU rate
             self.triangle.clock_timer();
-            
+
             // DMC runs at CPU rate
             if self.dmc.clock(&mut cpu_read) {
                 irq = true;
@@ -826,14 +827,14 @@ impl Apu {
             let adjusted_rate = self.cycles_per_sample + self.sample_adjustment;
             if self.sample_counter >= adjusted_rate {
                 self.sample_counter -= adjusted_rate;
-                
+
                 // Get mixed sample
                 let raw_sample = self.get_sample();
-                
+
                 // Apply NES high-pass filters (at output sample rate)
                 let sample = self.high_pass_90hz.process(raw_sample);
                 let sample = self.high_pass_440hz.process(sample);
-                
+
                 self.sample_buffer.push(sample);
             }
 
@@ -850,14 +851,14 @@ impl Apu {
         self.pulse1.envelope.clock();
         self.pulse2.envelope.clock();
         self.noise.envelope.clock();
-        
+
         // Clock triangle linear counter
         if self.triangle.linear_counter_reload_flag {
             self.triangle.linear_counter = self.triangle.linear_counter_reload;
         } else if self.triangle.linear_counter > 0 {
             self.triangle.linear_counter -= 1;
         }
-        
+
         // Clear reload flag if halt is clear
         if !self.triangle.length_counter_halt {
             self.triangle.linear_counter_reload_flag = false;
@@ -878,11 +879,15 @@ impl Apu {
         if !self.noise.length_counter_halt && self.noise.length_counter > 0 {
             self.noise.length_counter -= 1;
         }
-        
+
         // Clock sweep units
-        self.pulse1.sweep.clock(&mut self.pulse1.timer, self.pulse1.mute, 1);
+        self.pulse1
+            .sweep
+            .clock(&mut self.pulse1.timer, self.pulse1.mute, 1);
         self.pulse1.update_target_period();
-        self.pulse2.sweep.clock(&mut self.pulse2.timer, self.pulse2.mute, 2);
+        self.pulse2
+            .sweep
+            .clock(&mut self.pulse2.timer, self.pulse2.mute, 2);
         self.pulse2.update_target_period();
     }
 
@@ -893,7 +898,7 @@ impl Apu {
         let triangle = self.triangle.output() as usize;
         let noise = self.noise.output() as usize;
         let dmc = self.dmc.output() as usize;
-        
+
         // Use lookup tables for mixing (avoids division by zero)
         let pulse_out = pulse1 + pulse2;
         let pulse_mix = if pulse_out < PULSE_LUT_SIZE {
@@ -901,7 +906,7 @@ impl Apu {
         } else {
             self.pulse_lut[PULSE_LUT_SIZE - 1]
         };
-        
+
         // TND = 3 * triangle + 2 * noise + dmc
         let tnd_out = triangle * 3 + noise * 2 + dmc;
         let tnd_mix = if tnd_out < TND_LUT_SIZE {
@@ -909,19 +914,19 @@ impl Apu {
         } else {
             self.tnd_lut[TND_LUT_SIZE - 1]
         };
-        
+
         pulse_mix + tnd_mix
     }
 
     pub fn mix_samples(&self) -> f32 {
         self.get_sample()
     }
-    
+
     // Get buffered samples and clear the buffer
     pub fn take_samples(&mut self) -> Vec<f32> {
         std::mem::take(&mut self.sample_buffer)
     }
-    
+
     // Adjust sample rate for audio sync
     pub fn adjust_sample_rate(&mut self, queue_size: usize, target_queue_size: usize) {
         // Simple proportional control to match audio production to consumption
@@ -930,7 +935,7 @@ impl Apu {
         let adjustment_factor = if error.abs() > 1000.0 {
             0.000005 // Slower adjustment for large errors
         } else {
-            0.00001  // Normal adjustment for small errors
+            0.00001 // Normal adjustment for small errors
         };
         self.sample_adjustment = error * adjustment_factor;
         // Clamp adjustment to prevent extreme values that could cause audio artifacts

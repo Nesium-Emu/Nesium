@@ -29,7 +29,7 @@ impl TraceState {
 // Instruction disassembly helper
 pub fn disassemble_instruction(opcode: u8, operand1: Option<u8>, operand2: Option<u8>) -> String {
     let (mnemonic, addr_mode) = get_opcode_info(opcode);
-    
+
     match addr_mode {
         AddrMode::Implied => mnemonic.to_string(),
         AddrMode::Accumulator => format!("{} A", mnemonic),
@@ -369,4 +369,3 @@ fn get_opcode_info(opcode: u8) -> (&'static str, AddrMode) {
         _ => ("???", AddrMode::Implied),
     }
 }
-

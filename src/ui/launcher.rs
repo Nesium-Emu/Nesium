@@ -19,31 +19,31 @@ use std::thread;
 pub struct LauncherUi {
     /// ROM entries
     roms: Vec<RomEntry>,
-    
+
     /// Filtered/sorted ROM entries (indices into roms)
     filtered_roms: Vec<usize>,
-    
+
     /// Search query
     search_query: String,
-    
+
     /// Currently selected ROM index (in filtered_roms)
     selected_index: Option<usize>,
-    
+
     /// Texture cache for ROM logos
     logo_textures: HashMap<PathBuf, TextureHandle>,
-    
+
     /// Scan in progress
     scan_in_progress: bool,
-    
+
     /// Scan result receiver
     scan_receiver: Option<Receiver<Vec<RomEntry>>>,
-    
+
     /// Show settings dialog
     show_settings: bool,
-    
+
     /// Show add directory dialog
     show_add_dir: bool,
-    
+
     /// Scroll position
     scroll_offset: f32,
 }
@@ -64,34 +64,34 @@ impl LauncherUi {
             scroll_offset: 0.0,
         }
     }
-    
+
     /// Start scanning ROM directories in background
     pub fn start_scan(&mut self, config: &Config) {
         if self.scan_in_progress {
             return;
         }
-        
+
         let dirs = config.rom_dirs.clone();
-        
+
         if dirs.is_empty() {
             log::warn!("No ROM directories configured");
             return;
         }
-        
+
         let (tx, rx) = channel();
         self.scan_receiver = Some(rx);
         self.scan_in_progress = true;
-        
+
         // Clone config for thread
         let config_clone = config.clone();
-        
+
         thread::spawn(move || {
             // Catch panics to prevent hanging the UI
             let result = std::panic::catch_unwind(|| {
                 let mut scanner = RomScanner::with_artwork(&config_clone);
                 scanner.scan_directories(&dirs)
             });
-            
+
             match result {
                 Ok(roms) => {
                     let _ = tx.send(roms);
@@ -103,10 +103,10 @@ impl LauncherUi {
                 }
             }
         });
-        
+
         log::info!("Started ROM scan in background");
     }
-    
+
     /// Check for scan completion
     fn check_scan_completion(&mut self) {
         if let Some(receiver) = &self.scan_receiver {
@@ -116,17 +116,17 @@ impl LauncherUi {
                 self.update_filtered_roms();
                 self.scan_in_progress = false;
                 self.scan_receiver = None;
-                
+
                 // Clear texture cache (ROM list changed)
                 self.logo_textures.clear();
             }
         }
     }
-    
+
     /// Update filtered ROM list based on search query and sort mode
     fn update_filtered_roms(&mut self) {
         let query = self.search_query.to_lowercase();
-        
+
         self.filtered_roms = self
             .roms
             .iter()
@@ -140,7 +140,7 @@ impl LauncherUi {
             })
             .map(|(i, _)| i)
             .collect();
-        
+
         // Sort by title (case-insensitive)
         self.filtered_roms.sort_by(|&a, &b| {
             self.roms[a]
@@ -149,7 +149,7 @@ impl LauncherUi {
                 .cmp(&self.roms[b].title.to_lowercase())
         });
     }
-    
+
     /// Get or create logo texture
     fn get_logo_texture(
         &mut self,
@@ -161,7 +161,7 @@ impl LauncherUi {
         if let Some(texture) = self.logo_textures.get(rom_path) {
             return Some(texture.clone());
         }
-        
+
         // Decode logo
         use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
         if let Ok(rgba) = BASE64.decode(logo_base64) {
@@ -176,29 +176,25 @@ impl LauncherUi {
                 return Some(texture);
             }
         }
-        
+
         None
     }
-    
+
     /// Show launcher UI
-    pub fn show(
-        &mut self,
-        ctx: &egui::Context,
-        config: &mut Config,
-    ) -> Option<PathBuf> {
+    pub fn show(&mut self, ctx: &egui::Context, config: &mut Config) -> Option<PathBuf> {
         let mut rom_to_load = None;
-        
+
         // Check scan completion
         self.check_scan_completion();
-        
+
         // Top panel - Search and controls
         egui::TopBottomPanel::top("launcher_top").show(ctx, |ui| {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 ui.heading(RichText::new("🎮 ROM Browser").size(20.0));
-                
+
                 ui.add_space(16.0);
-                
+
                 // Search box
                 ui.label("Search:");
                 let response = ui.add(
@@ -206,13 +202,13 @@ impl LauncherUi {
                         .desired_width(300.0)
                         .hint_text("Type to search..."),
                 );
-                
+
                 if response.changed() {
                     self.update_filtered_roms();
                 }
-                
+
                 ui.add_space(8.0);
-                
+
                 // Rescan button
                 if ui
                     .add_enabled(!self.scan_in_progress, egui::Button::new("🔄 Rescan"))
@@ -221,15 +217,15 @@ impl LauncherUi {
                 {
                     self.start_scan(config);
                 }
-                
+
                 // Settings button
                 if ui.button("⚙ Settings").clicked() {
                     self.show_settings = true;
                 }
-                
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(format!("{} ROMs", self.filtered_roms.len()));
-                    
+
                     if self.scan_in_progress {
                         ui.spinner();
                         ui.label("Scanning...");
@@ -238,7 +234,7 @@ impl LauncherUi {
             });
             ui.add_space(8.0);
         });
-        
+
         // Central panel - ROM grid
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.roms.is_empty() && !self.scan_in_progress {
@@ -262,12 +258,12 @@ impl LauncherUi {
                     });
             }
         });
-        
+
         // Settings dialog
         if self.show_settings {
             self.show_settings_dialog(ctx, config);
         }
-        
+
         // Add directory dialog
         if self.show_add_dir {
             if let Some(dir) = rfd::FileDialog::new().pick_folder() {
@@ -279,10 +275,10 @@ impl LauncherUi {
             }
             self.show_add_dir = false;
         }
-        
+
         rom_to_load
     }
-    
+
     /// Show ROM grid view
     fn show_rom_grid(
         &mut self,
@@ -295,27 +291,30 @@ impl LauncherUi {
         let card_width = 180.0;
         let card_height = 200.0;
         let spacing = 12.0;
-        
+
         // Calculate columns
-        let columns = ((available_width + spacing) / (card_width + spacing)).floor().max(1.0) as usize;
-        
+        let columns = ((available_width + spacing) / (card_width + spacing))
+            .floor()
+            .max(1.0) as usize;
+
         ui.add_space(8.0);
-        
+
         // Draw grid
         let mut current_col = 0;
         let filtered_roms = self.filtered_roms.clone(); // Clone to avoid borrow issues
-        
+
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = Vec2::new(spacing, spacing);
-            
+
             for &rom_idx in &filtered_roms {
                 // ROM card
-                let card_response = self.draw_rom_card(ui, ctx, rom_idx, card_width, card_height, config);
-                
+                let card_response =
+                    self.draw_rom_card(ui, ctx, rom_idx, card_width, card_height, config);
+
                 if card_response.clicked() {
                     *rom_to_load = Some(self.roms[rom_idx].path.clone());
                 }
-                
+
                 current_col += 1;
                 if current_col >= columns {
                     current_col = 0;
@@ -324,7 +323,7 @@ impl LauncherUi {
             }
         });
     }
-    
+
     /// Draw a ROM card
     fn draw_rom_card(
         &mut self,
@@ -341,21 +340,19 @@ impl LauncherUi {
         let rom_mapper = self.roms[rom_idx].mapper;
         let rom_logo = self.roms[rom_idx].logo_base64.clone();
         let is_favorite = config.is_favorite(&rom_path);
-        let (rect, response) = ui.allocate_exact_size(
-            Vec2::new(width, height),
-            egui::Sense::click(),
-        );
-        
+        let (rect, response) =
+            ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::click());
+
         if ui.is_rect_visible(rect) {
             let visuals = ui.style().interact(&response);
-            
+
             // Card background with hover effect
             let bg_color = if response.hovered() {
                 Color32::from_rgb(60, 65, 80)
             } else {
                 Color32::from_rgb(40, 45, 60)
             };
-            
+
             // Draw rounded rectangle background
             ui.painter().rect(
                 rect,
@@ -364,13 +361,13 @@ impl LauncherUi {
                 egui::Stroke::new(2.0, visuals.bg_stroke.color),
                 egui::StrokeKind::Outside,
             );
-            
+
             // Logo area
             let logo_rect = egui::Rect::from_min_size(
                 rect.min + Vec2::new(8.0, 8.0),
                 Vec2::new(width - 16.0, 120.0),
             );
-            
+
             // Draw logo
             if let Some(texture) = self.get_logo_texture(&rom_path, &rom_logo, ctx) {
                 let logo_size = 100.0;
@@ -387,26 +384,23 @@ impl LauncherUi {
                 );
             } else {
                 // Placeholder
-                ui.painter().rect_filled(
-                    logo_rect.shrink(8.0),
-                    2.0,
-                    Color32::from_rgb(30, 30, 40),
-                );
+                ui.painter()
+                    .rect_filled(logo_rect.shrink(8.0), 2.0, Color32::from_rgb(30, 30, 40));
             }
-            
+
             // Title area
             let title_rect = egui::Rect::from_min_size(
                 rect.min + Vec2::new(8.0, 136.0),
                 Vec2::new(width - 16.0, 48.0),
             );
-            
+
             // Title text (manually positioned)
             let title_text = if rom_title.len() > 24 {
                 format!("{}...", &rom_title[..21])
             } else {
                 rom_title.clone()
             };
-            
+
             let title_pos = title_rect.center_top() + Vec2::new(0.0, 8.0);
             ui.painter().text(
                 title_pos,
@@ -415,7 +409,7 @@ impl LauncherUi {
                 egui::FontId::proportional(13.0),
                 Color32::WHITE,
             );
-            
+
             // Mapper info
             let mapper_pos = title_pos + Vec2::new(0.0, 20.0);
             ui.painter().text(
@@ -425,7 +419,7 @@ impl LauncherUi {
                 egui::FontId::proportional(10.0),
                 Color32::from_gray(180),
             );
-            
+
             // Favorite star
             if is_favorite {
                 let star_pos = rect.max - Vec2::new(24.0, height - 8.0);
@@ -438,10 +432,10 @@ impl LauncherUi {
                 );
             }
         }
-        
+
         response
     }
-    
+
     /// Show settings dialog
     fn show_settings_dialog(&mut self, ctx: &egui::Context, config: &mut Config) {
         egui::Window::new("⚙ ROM Browser Settings")
@@ -450,7 +444,7 @@ impl LauncherUi {
             .show(ctx, |ui| {
                 ui.heading("ROM Directories");
                 ui.add_space(8.0);
-                
+
                 // List ROM directories
                 let mut to_remove = None;
                 for (i, dir) in config.rom_dirs.iter().enumerate() {
@@ -461,7 +455,7 @@ impl LauncherUi {
                         }
                     });
                 }
-                
+
                 if let Some(i) = to_remove {
                     let dir = config.rom_dirs.remove(i);
                     log::info!("Removed ROM directory: {}", dir.display());
@@ -469,24 +463,24 @@ impl LauncherUi {
                         log::error!("Failed to save config: {}", e);
                     }
                 }
-                
+
                 ui.add_space(8.0);
-                
+
                 if ui.button("➕ Add Directory").clicked() {
                     self.show_add_dir = true;
                 }
-                
+
                 ui.add_space(16.0);
                 ui.separator();
                 ui.add_space(8.0);
-                
+
                 // Close button
                 if ui.button("Close").clicked() {
                     self.show_settings = false;
                 }
             });
     }
-    
+
     /// Load cached ROMs on startup (without rescan)
     pub fn load_cached(&mut self) {
         let scanner = RomScanner::new();
@@ -495,4 +489,3 @@ impl LauncherUi {
         log::info!("Loaded {} ROMs from cache", self.roms.len());
     }
 }
-

@@ -1,26 +1,26 @@
-use log::debug;
 use crate::cartridge::Mirroring;
+use log::debug;
 
 #[derive(Debug, Clone)]
 pub struct Ppu {
     // Registers
-    pub ctrl: u8,    // PPUCTRL (0x2000)
-    pub mask: u8,    // PPUMASK (0x2001)
-    pub status: u8,  // PPUSTATUS (0x2002)
+    pub ctrl: u8,     // PPUCTRL (0x2000)
+    pub mask: u8,     // PPUMASK (0x2001)
+    pub status: u8,   // PPUSTATUS (0x2002)
     pub oam_addr: u8, // OAMADDR (0x2003)
     pub oam_data: u8, // OAMDATA (0x2004)
-    pub scroll: u8,  // PPUSCROLL (0x2005)
-    pub addr: u8,    // PPUADDR (0x2006)
-    pub data: u8,    // PPUDATA (0x2007)
+    pub scroll: u8,   // PPUSCROLL (0x2005)
+    pub addr: u8,     // PPUADDR (0x2006)
+    pub data: u8,     // PPUDATA (0x2007)
 
     // Internal state
-    pub vram: [u8; 0x800],        // 2KB VRAM
-    pub palette: [u8; 0x20],      // 32 bytes palette RAM
-    pub mirroring: Mirroring,     // Nametable mirroring mode
-    pub oam: [u8; 0x100],         // 256 bytes OAM (Object Attribute Memory)
+    pub vram: [u8; 0x800],         // 2KB VRAM
+    pub palette: [u8; 0x20],       // 32 bytes palette RAM
+    pub mirroring: Mirroring,      // Nametable mirroring mode
+    pub oam: [u8; 0x100],          // 256 bytes OAM (Object Attribute Memory)
     pub secondary_oam: [u8; 0x20], // Secondary OAM for current scanline
-    pub vram_read_buffer: u8,     // PPUDATA read buffer (one-read delay for < $3F00)
-    
+    pub vram_read_buffer: u8,      // PPUDATA read buffer (one-read delay for < $3F00)
+
     // Debug counters for logging
     pub ppudata_read_count: u32,
     pub ppudata_write_count: u32,
@@ -37,7 +37,7 @@ pub struct Ppu {
     pub vram_addr_temp: u16, // t
     pub vram_addr: u16,      // v
     pub fine_x: u8,          // x
-    pub write_toggle: bool,   // w
+    pub write_toggle: bool,  // w
 
     // Rendering state
     pub next_tile_id: u8,
@@ -60,7 +60,7 @@ pub struct Ppu {
     pub sprite_patterns_low: [u8; 8],
     pub sprite_patterns_high: [u8; 8],
     pub sprite_attributes: [u8; 8],
-    
+
     // Framebuffer for pixel output
     pub framebuffer: [u8; 256 * 240],
 }
@@ -116,7 +116,7 @@ impl Ppu {
             framebuffer: [0; 256 * 240],
         }
     }
-    
+
     pub fn set_mirroring(&mut self, mirroring: Mirroring) {
         self.mirroring = mirroring;
     }
@@ -134,7 +134,11 @@ impl Ppu {
         self.vram_addr = (self.vram_addr.wrapping_add(increment)) & 0x7FFF;
     }
 
-    pub fn read_register(&mut self, addr: u16, mut chr_read: &mut Option<&mut dyn FnMut(u16) -> u8>) -> u8 {
+    pub fn read_register(
+        &mut self,
+        addr: u16,
+        mut chr_read: &mut Option<&mut dyn FnMut(u16) -> u8>,
+    ) -> u8 {
         match addr & 0x2007 {
             0x2002 => {
                 // PPUSTATUS
@@ -169,7 +173,7 @@ impl Ppu {
                     // Pattern tables (0x0000-0x1FFF) must be read from cartridge
                     let actual_value = self.read_vram(addr, &mut chr_read);
                     self.vram_read_buffer = actual_value;
-                    
+
                     // Detailed logging for first 500 reads or until frame 30 (use INFO so it shows without --debug)
                     self.ppudata_read_count += 1;
                     if self.ppudata_read_count <= 500 && self.frame < 30 {
@@ -180,13 +184,13 @@ impl Ppu {
                                 self.ppudata_read_count, self.frame, addr, buffered_value, actual_value, buffered_value, self.vram_read_buffer);
                         }
                     }
-                    
+
                     buffered_value
                 };
-                
+
                 // Increment VRAM address (by 1 or 32 based on PPUCTRL bit 2)
                 self.increment_vram_addr();
-                
+
                 result
             }
             _ => 0,
@@ -200,24 +204,39 @@ impl Ppu {
                 // PPUCTRL ($2000)
                 // Bit 3 (0x08): Sprite pattern table address (0 = $0000, 1 = $1000)
                 // Bit 4 (0x10): Background pattern table address (0 = $0000, 1 = $1000)
-                let bg_pt = if (value & 0x10) != 0 { "$1000" } else { "$0000" };
-                let sprite_pt = if (value & 0x08) != 0 { "$1000" } else { "$0000" };
+                let bg_pt = if (value & 0x10) != 0 {
+                    "$1000"
+                } else {
+                    "$0000"
+                };
+                let sprite_pt = if (value & 0x08) != 0 {
+                    "$1000"
+                } else {
+                    "$0000"
+                };
                 log::info!("PPUCTRL write: 0x{:02X} | bg_pt: {} sprite_pt: {} | NMI: {} | Increment: {} | Nametable: {}",
                     value, bg_pt, sprite_pt,
                     if (value & 0x80) != 0 { "enabled" } else { "disabled" },
                     if (value & 0x04) != 0 { "32" } else { "1" },
                     value & 0x03);
                 self.ctrl = value;
-                self.vram_addr_temp = (self.vram_addr_temp & 0xF3FF) | ((value as u16 & 0x03) << 10);
+                self.vram_addr_temp =
+                    (self.vram_addr_temp & 0xF3FF) | ((value as u16 & 0x03) << 10);
             }
             0x2001 => {
                 // PPUMASK
                 let render_bg = (value & 0x08) != 0;
                 let render_sprites = (value & 0x10) != 0;
-                debug!("PPU $2001 write: 0x{:02X} (render_bg={}, render_sprites={})", 
-                    value, render_bg, render_sprites);
+                debug!(
+                    "PPU $2001 write: 0x{:02X} (render_bg={}, render_sprites={})",
+                    value, render_bg, render_sprites
+                );
                 if render_bg || render_sprites {
-                    log::info!("PPU rendering ENABLED: bg={}, sprites={}", render_bg, render_sprites);
+                    log::info!(
+                        "PPU rendering ENABLED: bg={}, sprites={}",
+                        render_bg,
+                        render_sprites
+                    );
                 }
                 self.mask = value;
             }
@@ -248,20 +267,21 @@ impl Ppu {
                 // PPUADDR
                 // Check for mid-frame write (TLOZ uses this for vertical scrolling)
                 let is_midframe = self.scanline >= 0 && self.scanline < 240 && self.cycle > 0;
-                
+
                 if !self.write_toggle {
                     // First write: high byte
                     if self.ppuaddr_write_count < 10 {
                         log::info!("PPUADDR write (HIGH, count={}): frame={}, value=0x{:02X}, temp_before=0x{:04X}", 
                             self.ppuaddr_write_count, self.frame, value, self.vram_addr_temp);
                     }
-                    self.vram_addr_temp = (self.vram_addr_temp & 0x00FF) | ((value & 0x3F) as u16) << 8;
+                    self.vram_addr_temp =
+                        (self.vram_addr_temp & 0x00FF) | ((value & 0x3F) as u16) << 8;
                 } else {
                     // Second write: low byte
                     self.vram_addr_temp = (self.vram_addr_temp & 0xFF00) | value as u16;
                     self.vram_addr = self.vram_addr_temp;
                     self.ppuaddr_write_count += 1;
-                    
+
                     // Log mid-frame PPUADDR writes (TLOZ vertical scrolling technique)
                     if is_midframe {
                         log::info!("MIDFRAME PPUADDR write: frame={}, scanline={}, cycle={}, vram_addr=0x{:04X} (coarse_y={})", 
@@ -278,19 +298,19 @@ impl Ppu {
                 // PPUDATA write
                 // Read address BEFORE increment (for this write)
                 let addr = self.vram_addr & 0x3FFF;
-                
+
                 // Calculate increment based on PPUCTRL bit 2 (for logging)
                 // Bit 2 = 0: increment by 1 (horizontal fill) - used by most games like SMB, DK
                 // Bit 2 = 1: increment by 32 (vertical fill)
                 let increment = if (self.ctrl & 0x04) != 0 { 32 } else { 1 };
-                
+
                 // ALWAYS log first 20 writes unconditionally to verify they're happening
                 self.ppudata_write_count += 1;
                 if self.ppudata_write_count <= 20 {
                     log::info!("PPUDATA write #{} (UNCONDITIONAL): frame={}, vram_addr=0x{:04X}, value=0x{:02X}, increment={}, PPUCTRL=0x{:02X} (bit2={})", 
                         self.ppudata_write_count, self.frame, addr, value, increment, self.ctrl, (self.ctrl >> 2) & 1);
                 }
-                
+
                 // Detailed logging for first 200 writes (use INFO so it shows without --debug)
                 if self.ppudata_write_count <= 200 {
                     if addr >= 0x2000 && addr < 0x3F00 {
@@ -299,15 +319,27 @@ impl Ppu {
                         let nt_index = match self.mirroring {
                             Mirroring::Horizontal => {
                                 let base = nt_addr & 0x03FF;
-                                if nt_addr >= 0x2800 { base + 0x0400 } else { base }
+                                if nt_addr >= 0x2800 {
+                                    base + 0x0400
+                                } else {
+                                    base
+                                }
                             }
                             Mirroring::Vertical => {
                                 let base = nt_addr & 0x03FF;
-                                if (nt_addr & 0x0400) != 0 { base + 0x0400 } else { base }
+                                if (nt_addr & 0x0400) != 0 {
+                                    base + 0x0400
+                                } else {
+                                    base
+                                }
                             }
                             Mirroring::FourScreen => {
                                 let base = nt_addr & 0x03FF;
-                                if nt_addr >= 0x2800 { base + 0x0400 } else { base }
+                                if nt_addr >= 0x2800 {
+                                    base + 0x0400
+                                } else {
+                                    base
+                                }
                             }
                             Mirroring::OneScreenLower | Mirroring::OneScreenUpper => {
                                 // Single screen: all nametables map to same 1KB
@@ -326,12 +358,12 @@ impl Ppu {
                             self.ppudata_write_count, self.frame, addr, value, increment);
                     }
                 }
-                
+
                 // Write to VRAM, then increment address
                 // CRITICAL: increment MUST happen after write, and MUST update vram_addr correctly
                 self.write_vram(addr, value);
                 self.increment_vram_addr();
-                
+
                 // Return pattern table writes for CHR-RAM handling
                 if addr < 0x2000 {
                     return Some((addr, value));
@@ -352,7 +384,12 @@ impl Ppu {
                     // Log CHR reads during early frames (especially high addresses $1EC0-$1FFF for title data)
                     if self.frame < 30 {
                         if addr >= 0x1EC0 || self.frame < 10 {
-                            log::info!("CHR read: frame={}, addr=0x{:04X}, data=0x{:02X}", self.frame, addr, data);
+                            log::info!(
+                                "CHR read: frame={}, addr=0x{:04X}, data=0x{:02X}",
+                                self.frame,
+                                addr,
+                                data
+                            );
                         }
                     }
                     data
@@ -411,7 +448,11 @@ impl Ppu {
             0x3F00..=0x3FFF => {
                 // Palette RAM
                 let index = addr & 0x001F;
-                let index = if (index & 0x03) == 0 { index & !0x10 } else { index };
+                let index = if (index & 0x03) == 0 {
+                    index & !0x10
+                } else {
+                    index
+                };
                 self.palette[index as usize]
             }
             _ => 0,
@@ -465,7 +506,11 @@ impl Ppu {
             0x3F00..=0x3FFF => {
                 // Palette RAM
                 let index = addr & 0x001F;
-                let index = if (index & 0x03) == 0 { index & !0x10 } else { index };
+                let index = if (index & 0x03) == 0 {
+                    index & !0x10
+                } else {
+                    index
+                };
                 self.palette[index as usize] = value;
                 // Mirror writes to 0x3F10, 0x3F14, 0x3F18, 0x3F1C
                 if (index & 0x03) == 0 {
@@ -487,7 +532,7 @@ impl Ppu {
                 self.status &= 0x1F; // Clear VBlank, sprite overflow, sprite 0 hit
                 self.nmi_output = false;
             }
-            
+
             // Background tile fetching (cycles 1-256, 321-336)
             if self.cycle >= 1 && self.cycle <= 256 {
                 // Background tile fetching happens at specific phases
@@ -521,12 +566,12 @@ impl Ppu {
                         _ => {}
                     }
                 }
-                
+
                 // Shift registers AFTER fetching (for pre-render, just shift, don't render)
                 if (self.mask & 0x08) != 0 {
                     self.shift_registers();
                 }
-                
+
                 // Increment Y scroll at cycle 256 - only when rendering is enabled
             } else if self.cycle == 258 {
                 // Copy X scroll at cycle 258 (VISIBLE_DOTS + 2) - matches C reference
@@ -577,7 +622,7 @@ impl Ppu {
                         }
                     }
                 }
-                
+
                 // Increment coarse X when fine_x wraps (matching C reference)
                 // C code: if(fine_x == 7) { if((ppu->v & COARSE_X) == 31) {...} else ppu->v++; }
                 if (self.mask & 0x08) != 0 {
@@ -620,14 +665,14 @@ impl Ppu {
                     self.copy_x();
                 }
             }
-            
+
             // Sprite evaluation at cycle 320 (matching C reference EXACTLY)
             // C code: diff = scanlines - OAM[Y], evaluates for NEXT scanline
             // This cache is used for rendering on the NEXT scanline
             if self.cycle == 320 && (self.mask & 0x18) != 0 {
                 self.evaluate_sprites_for_scanline(self.scanline + 1);
             }
-            
+
             // Background tile fetching for next scanline (cycles 321-336)
             if self.cycle >= 321 && self.cycle <= 336 {
                 if (self.mask & 0x08) != 0 {
@@ -653,12 +698,13 @@ impl Ppu {
         }
 
         self.cycle += 1;
-        
+
         // Odd/even frame timing: on odd frames, if rendering is enabled, skip cycle 340
         let rendering_enabled = (self.mask & 0x18) != 0;
         let is_odd_frame = (self.frame & 1) != 0;
-        let skip_cycle = self.scanline == -1 && self.cycle == 340 && rendering_enabled && is_odd_frame;
-        
+        let skip_cycle =
+            self.scanline == -1 && self.cycle == 340 && rendering_enabled && is_odd_frame;
+
         if skip_cycle {
             // Skip cycle 340 on odd frames during pre-render scanline
             self.cycle = 0;
@@ -667,7 +713,7 @@ impl Ppu {
             self.cycle = 0;
             self.scanline += 1;
         }
-        
+
         if self.scanline > 260 {
             self.scanline = -1;
             self.frame += 1;
@@ -679,47 +725,53 @@ impl Ppu {
 
     fn render_pixel(&mut self, chr_read: &mut impl FnMut(u16) -> u8) -> u8 {
         let x = (self.cycle - 1) as u32;
-        
+
         // Calculate fine_x for this pixel - matches C reference: ((ppu->x + x) % 8)
         // This combines the fine scroll register with the pixel position
         let fine_x = ((self.fine_x as u32 + x) % 8) as u8;
-        
+
         // Render background pixel - match C reference implementation exactly
         // C code: render_background() in ppu.c
         let bg_pixel = if (self.mask & 0x08) != 0 {
             // Check if left 8 pixels are masked (PPUMASK bit 1 = SHOW_BG_8)
             // C code: if(!(ppu->mask & SHOW_BG_8) && x < 8) return 0;
             let bg_left_masked = x < 8 && (self.mask & 0x02) == 0;
-            
+
             if !bg_left_masked {
                 // Match C reference: render_background function
                 // tile_addr = 0x2000 | (ppu->v & 0xFFF)
                 let tile_addr = 0x2000 | (self.vram_addr & 0x0FFF);
-                
+
                 // attr_addr = 0x23C0 | (ppu->v & 0x0C00) | ((ppu->v >> 4) & 0x38) | ((ppu->v >> 2) & 0x07)
-                let attr_addr = 0x23C0 | (self.vram_addr & 0x0C00) 
-                    | ((self.vram_addr >> 4) & 0x38) 
+                let attr_addr = 0x23C0
+                    | (self.vram_addr & 0x0C00)
+                    | ((self.vram_addr >> 4) & 0x38)
                     | ((self.vram_addr >> 2) & 0x07);
-                
+
                 // Read tile ID from nametable
                 let mut no_chr = None;
                 let tile_id = self.read_vram(tile_addr, &mut no_chr);
-                
+
                 // pattern_addr = (tile_id * 16 + ((ppu->v >> 12) & 0x7)) | ((ppu->ctrl & BG_TABLE) << 8)
-                let bg_pt_base = if (self.ctrl & 0x10) != 0 { 0x1000 } else { 0x0000 };
+                let bg_pt_base = if (self.ctrl & 0x10) != 0 {
+                    0x1000
+                } else {
+                    0x0000
+                };
                 let fine_y = (self.vram_addr >> 12) & 0x07;
                 let pattern_addr = ((tile_id as u16) * 16 + fine_y) | bg_pt_base;
-                
+
                 // Read pattern bytes directly from CHR
                 let pattern_low = chr_read(pattern_addr);
                 let pattern_high = chr_read(pattern_addr + 8);
-                
+
                 // Extract pixel bits - C code uses (7 ^ fine_x) which is same as (7 - fine_x) for 0-7
                 // palette_addr = (read_vram(ppu, pattern_addr) >> (7 ^ fine_x)) & 1
                 // palette_addr |= ((read_vram(ppu, pattern_addr + 8) >> (7 ^ fine_x)) & 1) << 1
                 let bit_pos = 7 ^ fine_x;
-                let palette_idx = ((pattern_low >> bit_pos) & 1) | (((pattern_high >> bit_pos) & 1) << 1);
-                
+                let palette_idx =
+                    ((pattern_low >> bit_pos) & 1) | (((pattern_high >> bit_pos) & 1) << 1);
+
                 if palette_idx != 0 {
                     // Read attribute byte
                     let mut no_chr = None;
@@ -737,7 +789,7 @@ impl Ppu {
         } else {
             None
         };
-        
+
         // Check if sprites are masked in left 8 pixels (PPUMASK bit 2 = SHOW_SPRITE_8)
         // C code: if(ppu->mask & SHOW_SPRITE && ((ppu->mask & SHOW_SPRITE_8) || x >= 8))
         let sprite_left_masked = x < 8 && (self.mask & 0x04) == 0;
@@ -746,38 +798,40 @@ impl Ppu {
         // Fetches pattern data on-the-fly like the C implementation
         let mut sprite_result: Option<u8> = None;
         let mut back_priority = false;
-        
+
         if (self.mask & 0x10) != 0 && !sprite_left_masked {
             let y = self.scanline as i32;
             let sprite_height: i32 = if (self.ctrl & 0x20) != 0 { 16 } else { 8 };
-            
+
             // Iterate through OAM directly like C reference (render_sprites fetches on-the-fly)
             for i in 0..self.sprite_count as usize {
                 let oam_idx = (self.sprite_indices[i] as usize) * 4;
                 let tile_x = self.oam[oam_idx + 3] as i32;
                 let x_i32 = x as i32;
-                
+
                 // C code: if (x - tile_x < 0 || x - tile_x >= 8) continue;
                 if x_i32 - tile_x < 0 || x_i32 - tile_x >= 8 {
                     continue;
                 }
-                
+
                 let tile_id = self.oam[oam_idx + 1] as u16;
                 let tile_y = self.oam[oam_idx] as i32 + 1; // C code: tile_y = OAM[i] + 1
                 let attr = self.oam[oam_idx + 2];
-                
+
                 // Calculate x_off and y_off like C reference
                 let mut x_off = (x_i32 - tile_x) % 8;
                 let mut y_off = (y - tile_y) % sprite_height;
-                
+
                 // Handle flipping
-                if (attr & 0x40) == 0 { // Not horizontally flipped
+                if (attr & 0x40) == 0 {
+                    // Not horizontally flipped
                     x_off ^= 7;
                 }
-                if (attr & 0x80) != 0 { // Vertically flipped
+                if (attr & 0x80) != 0 {
+                    // Vertically flipped
                     y_off ^= sprite_height - 1;
                 }
-                
+
                 // Calculate tile address - matches C reference exactly
                 let tile_addr = if (self.ctrl & 0x20) != 0 {
                     // 8x16 sprites: C code: y_off = y_off & 7 | ((y_off & 8) << 1);
@@ -787,51 +841,57 @@ impl Ppu {
                     addr
                 } else {
                     // 8x8 sprites: tile_addr = tile * 16 + y_off + (ctrl & SPRITE_TABLE ? 0x1000 : 0)
-                    let sprite_table = if (self.ctrl & 0x08) != 0 { 0x1000 } else { 0x0000 };
+                    let sprite_table = if (self.ctrl & 0x08) != 0 {
+                        0x1000
+                    } else {
+                        0x0000
+                    };
                     tile_id * 16 + y_off as u16 + sprite_table
                 };
-                
+
                 // Read pattern data directly from CHR (on-the-fly like C reference)
                 let pattern_low = chr_read(tile_addr);
                 let pattern_high = chr_read(tile_addr + 8);
-                
+
                 // Extract pixel bits
-                let palette_addr = ((pattern_low >> x_off) & 1) | (((pattern_high >> x_off) & 1) << 1);
-                
+                let palette_addr =
+                    ((pattern_low >> x_off) & 1) | (((pattern_high >> x_off) & 1) << 1);
+
                 if palette_addr == 0 {
                     continue;
                 }
-                
+
                 // Calculate final palette index
                 let palette_idx = (0x10 | ((attr & 0x03) << 2) | palette_addr) as usize;
                 back_priority = (attr & 0x20) != 0; // bit 5 = behind background
-                
+
                 // Sprite 0 hit detection - matches C reference exactly:
                 // if (!(ppu->status & SPRITE_0_HIT) && (ppu->mask & SHOW_BG) && i == 0 && palette_addr && bg_addr && x < 255)
                 if (self.status & 0x40) == 0           // not already set
                     && (self.mask & 0x08) != 0         // background enabled
                     && self.sprite_indices[i] == 0    // sprite 0
                     && bg_pixel.is_some()             // bg pixel opaque
-                    && x < 255                        // not at x=255
+                    && x < 255
+                // not at x=255
                 {
                     self.status |= 0x40; // Set sprite 0 hit flag
                     log::info!("Sprite 0 hit at scanline={}, x={}", self.scanline, x);
                 }
-                
+
                 // Return this sprite's palette color
                 sprite_result = Some(self.palette[palette_idx] & 0x3F);
                 break; // First opaque sprite wins (C code breaks here too)
             }
         }
-        
+
         // Final pixel composition - matches C reference exactly:
         // if((!palette_addr && palette_addr_sp) || (palette_addr && palette_addr_sp && !back_priority))
         //     palette_addr = palette_addr_sp;
         // palette_addr = ppu->palette[palette_addr];
-        
+
         // Determine final color:
         // - If no BG pixel and sprite exists: use sprite
-        // - If BG pixel and sprite exists and sprite in front: use sprite  
+        // - If BG pixel and sprite exists and sprite in front: use sprite
         // - Otherwise: use BG (or backdrop if no BG)
         let final_color = if bg_pixel.is_none() && sprite_result.is_some() {
             // Background transparent, sprite opaque -> use sprite
@@ -846,10 +906,10 @@ impl Ppu {
             // Universal background color (palette entry 0)
             self.palette[0] & 0x3F
         };
-        
+
         final_color
     }
-    
+
     pub fn build_framebuffer(&mut self, framebuffer: &mut [u8], _chr_read: impl Fn(u16) -> u8) {
         // Re-render the visible frame
         for y in 0..240 {
@@ -858,14 +918,14 @@ impl Ppu {
                 if idx >= framebuffer.len() {
                     continue;
                 }
-                
+
                 // Simplified rendering - would need to simulate PPU state for this pixel
                 // For now, use a simple approach: render from current PPU state
                 if (self.mask & 0x08) == 0 && (self.mask & 0x10) == 0 {
                     framebuffer[idx] = self.palette[0] & 0x3F;
                     continue;
                 }
-                
+
                 // This is a simplified version - full accuracy would require
                 // tracking pixel state during rendering
                 framebuffer[idx] = self.palette[0] & 0x3F;
@@ -887,7 +947,7 @@ impl Ppu {
         // Fetch phases: 1, 3, 5, 7 (cycles 2, 4, 6, 8 of each 8-cycle group)
         // Use cycle % 8 to determine fetch phase (cycle 1 = phase 0, cycle 2 = phase 1, etc.)
         let phase = (self.cycle - 1) % 8;
-        
+
         match phase {
             1 => {
                 // Fetch nametable byte
@@ -898,7 +958,7 @@ impl Ppu {
                 let addr = nametable_base | (self.vram_addr & 0x03FF);
                 let mut no_chr_read = None;
                 self.next_tile_id = self.read_vram(addr, &mut no_chr_read);
-                
+
                 // Debug: log nametable reads to see what tiles are being fetched
                 if self.scanline >= 0 && self.scanline < 3 && self.cycle < 50 {
                     debug!("Nametable read: sl={}, cy={}, vram_addr=0x{:04X}, nametable_base=0x{:04X}, nametable_addr=0x{:04X}, tile_id=0x{:02X}",
@@ -911,7 +971,8 @@ impl Ppu {
                 // Attribute table is at nametable base + 0x03C0
                 // Use same nametable base as nametable fetch (from vram_addr bits 10-11)
                 let nametable_base = 0x2000 | (self.vram_addr & 0x0C00);
-                let addr = nametable_base | 0x03C0
+                let addr = nametable_base
+                    | 0x03C0
                     | ((self.vram_addr >> 4) & 0x38)
                     | ((self.vram_addr >> 2) & 0x07);
                 let mut no_chr_read = None;
@@ -929,11 +990,15 @@ impl Ppu {
                 // PPUCTRL bit 4 (0x10): 0 = background from $0000, 1 = background from $1000
                 // Address calculation: base + (tile_id * 16) + fine_y
                 // Each tile is 16 bytes: 8 bytes for low plane (0-7), 8 bytes for high plane (8-15)
-                let bg_pt_base = if (self.ctrl & 0x10) != 0 { 0x1000 } else { 0x0000 };
+                let bg_pt_base = if (self.ctrl & 0x10) != 0 {
+                    0x1000
+                } else {
+                    0x0000
+                };
                 let fine_y = (self.vram_addr >> 12) & 0x07; // Fine Y scroll (0-7)
                 let low_plane_addr = bg_pt_base | ((self.next_tile_id as u16) << 4) | fine_y;
                 self.next_tile_low = chr_read(low_plane_addr);
-                
+
                 // Debug: log first few fetches with bitplane info
                 if self.scanline >= 0 && self.scanline < 3 && self.cycle < 50 {
                     log::info!("BG Pattern LOW: sl={}, cy={}, tile=0x{:02X}, fine_y={}, addr=0x{:04X}, value=0x{:02X} (bits: {:08b})",
@@ -943,44 +1008,60 @@ impl Ppu {
             7 => {
                 // Fetch background pattern table high byte (plane 1)
                 // High plane is 8 bytes after low plane: base + (tile_id * 16) + fine_y + 8
-                let bg_pt_base = if (self.ctrl & 0x10) != 0 { 0x1000 } else { 0x0000 };
+                let bg_pt_base = if (self.ctrl & 0x10) != 0 {
+                    0x1000
+                } else {
+                    0x0000
+                };
                 let fine_y = (self.vram_addr >> 12) & 0x07; // Fine Y scroll (0-7)
                 let high_plane_addr = bg_pt_base | ((self.next_tile_id as u16) << 4) | fine_y | 8;
                 self.next_tile_high = chr_read(high_plane_addr);
-                
+
                 // Debug: log first few fetches with bitplane composition
                 if self.scanline >= 0 && self.scanline < 3 && self.cycle < 50 {
                     // Show what pixels would be generated from these bytes
-                    let pixel_samples = (0..8).map(|i| {
-                        let low_bit = (self.next_tile_low >> (7-i)) & 0x01;
-                        let high_bit = (self.next_tile_high >> (7-i)) & 0x01;
-                        ((high_bit << 1) | low_bit) as u8
-                    }).collect::<Vec<_>>();
+                    let pixel_samples = (0..8)
+                        .map(|i| {
+                            let low_bit = (self.next_tile_low >> (7 - i)) & 0x01;
+                            let high_bit = (self.next_tile_high >> (7 - i)) & 0x01;
+                            ((high_bit << 1) | low_bit) as u8
+                        })
+                        .collect::<Vec<_>>();
                     log::info!("BG Pattern HIGH: sl={}, cy={}, tile=0x{:02X}, fine_y={}, addr=0x{:04X}, value=0x{:02X} (bits: {:08b}) | pixels: {:?}",
                         self.scanline, self.cycle, self.next_tile_id, fine_y, high_plane_addr, self.next_tile_high, self.next_tile_high, pixel_samples);
                 }
-                
+
                 // Store fetched data and reload shift registers
                 // This happens at the END of the 8-cycle fetch group (phase 7)
                 self.tile_id = self.next_tile_id;
                 self.tile_attr = self.next_tile_attr;
                 self.tile_low = self.next_tile_low;
                 self.tile_high = self.next_tile_high;
-                
+
                 // Reload shift registers: load into high byte (bits 8-15)
                 // The shift registers are 16-bit: bits 8-15 hold the current tile, bits 0-7 hold the next tile
                 // We shift LEFT each cycle, so we load into high byte and read from high byte
                 // After 8 shifts, the tile moves to low byte, and we load next tile into high byte
-                self.shift_pattern_low = (self.shift_pattern_low & 0x00FF) | ((self.tile_low as u16) << 8);
-                self.shift_pattern_high = (self.shift_pattern_high & 0x00FF) | ((self.tile_high as u16) << 8);
-                
+                self.shift_pattern_low =
+                    (self.shift_pattern_low & 0x00FF) | ((self.tile_low as u16) << 8);
+                self.shift_pattern_high =
+                    (self.shift_pattern_high & 0x00FF) | ((self.tile_high as u16) << 8);
+
                 // Load attribute bits (repeat across 8 pixels)
                 // Attribute is 2 bits, expanded to 8 bits (one per pixel)
-                let attr_low = if (self.tile_attr & 0x01) != 0 { 0xFF } else { 0x00 };
-                let attr_high = if (self.tile_attr & 0x02) != 0 { 0xFF } else { 0x00 };
+                let attr_low = if (self.tile_attr & 0x01) != 0 {
+                    0xFF
+                } else {
+                    0x00
+                };
+                let attr_high = if (self.tile_attr & 0x02) != 0 {
+                    0xFF
+                } else {
+                    0x00
+                };
                 self.shift_attr_low = (self.shift_attr_low & 0x00FF) | (attr_low << 8);
                 self.shift_attr_high = (self.shift_attr_high & 0x00FF) | (attr_high << 8);
-                
+
                 // Debug: log shift register loading
                 if self.scanline >= 0 && self.scanline < 3 && self.cycle < 30 {
                     log::info!("Shift load: sl={}, cy={}, tile=0x{:02X}, tile_low=0x{:02X}, tile_high=0x{:02X}, shift_low=0x{:04X}, shift_high=0x{:04X}", 
@@ -992,26 +1073,31 @@ impl Ppu {
         }
     }
 
-    fn fetch_sprite_data(&mut self, chr_read: &mut impl FnMut(u16) -> u8, sprite_idx: usize, phase: u32) {
+    fn fetch_sprite_data(
+        &mut self,
+        chr_read: &mut impl FnMut(u16) -> u8,
+        sprite_idx: usize,
+        phase: u32,
+    ) {
         if sprite_idx >= self.sprite_count as usize {
             return;
         }
-        
+
         let sprite_y_oam = self.secondary_oam[sprite_idx * 4] as i32;
         let sprite_tile = self.secondary_oam[sprite_idx * 4 + 1];
         let sprite_attr = self.secondary_oam[sprite_idx * 4 + 2];
         let flip_vertical = (sprite_attr & 0x80) != 0;
         let is_8x16 = (self.ctrl & 0x20) != 0;
         let sprite_height = if is_8x16 { 16 } else { 8 };
-        
+
         // Calculate which row of the sprite we're rendering
         let mut row = (self.scanline as i32) - sprite_y_oam;
-        
+
         // Handle vertical flip
         if flip_vertical {
             row = sprite_height - 1 - row;
         }
-        
+
         // For 8x16 sprites, determine which tile (top or bottom half)
         let (tile_index, row_in_tile) = if is_8x16 {
             // 8x16 sprites: two 8x8 tiles stacked vertically
@@ -1025,7 +1111,7 @@ impl Ppu {
         } else {
             (sprite_tile, row as u16)
         };
-        
+
         match phase {
             0 => {
                 // Fetch sprite pattern low (cycle 0 of sprite fetch)
@@ -1035,7 +1121,11 @@ impl Ppu {
                     pattern_table | ((tile_index as u16) << 4) | row_in_tile
                 } else {
                     // 8x8 sprites: pattern table from PPUCTRL bit 3
-                    let sprite_pt_base = if (self.ctrl & 0x08) != 0 { 0x1000 } else { 0x0000 };
+                    let sprite_pt_base = if (self.ctrl & 0x08) != 0 {
+                        0x1000
+                    } else {
+                        0x0000
+                    };
                     sprite_pt_base | ((tile_index as u16) << 4) | row_in_tile
                 };
                 let mut pattern = chr_read(addr);
@@ -1053,7 +1143,11 @@ impl Ppu {
                     pattern_table | ((tile_index as u16) << 4) | row_in_tile | 8
                 } else {
                     // 8x8 sprites: pattern table from PPUCTRL bit 3
-                    let sprite_pt_base = if (self.ctrl & 0x08) != 0 { 0x1000 } else { 0x0000 };
+                    let sprite_pt_base = if (self.ctrl & 0x08) != 0 {
+                        0x1000
+                    } else {
+                        0x0000
+                    };
                     sprite_pt_base | ((tile_index as u16) << 4) | row_in_tile | 8
                 };
                 let mut pattern = chr_read(addr);
@@ -1076,17 +1170,17 @@ impl Ppu {
         //         if(diff >= 0 && diff < range) { cache sprite }
         // Note: NES sprites appear at OAM[Y] + 1, but the evaluation uses diff >= 0
         // to match the C reference behavior (which includes the off-by-one)
-        
+
         self.secondary_oam = [0xFF; 0x20];
         self.sprite_count = 0;
-        
+
         // Don't evaluate if target scanline is out of visible range
         if target_scanline < 0 || target_scanline >= 240 {
             return;
         }
-        
+
         let sprite_height: i32 = if (self.ctrl & 0x20) != 0 { 16 } else { 8 };
-        
+
         for i in 0..64 {
             let y = self.oam[i * 4] as i32;
             // Check if sprite is visible on target scanline
@@ -1151,7 +1245,7 @@ impl Ppu {
         if y >= 240 || x >= 256 {
             return;
         }
-        
+
         let idx = (y * 256 + x) as usize;
         if idx >= framebuffer.len() {
             return;
@@ -1164,7 +1258,11 @@ impl Ppu {
         }
 
         let cycle = x as u32;
-        let bg_pixel = if (self.mask & 0x08) != 0 && cycle < 256 && self.scanline >= 0 && self.scanline < 240 {
+        let bg_pixel = if (self.mask & 0x08) != 0
+            && cycle < 256
+            && self.scanline >= 0
+            && self.scanline < 240
+        {
             let shift = 15 - self.fine_x as u32 - (cycle % 8);
             let pattern = ((self.shift_pattern_high >> shift) & 0x01) << 1
                 | ((self.shift_pattern_low >> shift) & 0x01);
@@ -1179,7 +1277,11 @@ impl Ppu {
             None
         };
 
-        let _sprite_pixel: Option<u8> = if (self.mask & 0x10) != 0 && cycle < 256 && self.scanline >= 0 && self.scanline < 240 {
+        let _sprite_pixel: Option<u8> = if (self.mask & 0x10) != 0
+            && cycle < 256
+            && self.scanline >= 0
+            && self.scanline < 240
+        {
             for i in 0..self.sprite_count as usize {
                 let sprite_x = self.sprite_positions[i] as u32;
                 if cycle >= sprite_x && cycle < sprite_x + 8 {
@@ -1216,5 +1318,4 @@ impl Ppu {
             framebuffer[idx] = self.palette[0] & 0x3F; // Background color
         }
     }
-
 }

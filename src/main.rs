@@ -20,8 +20,8 @@ mod rom_browser;
 mod ui;
 
 use clap::Parser;
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "nesium")]
@@ -86,10 +86,10 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             // Set up custom fonts
             setup_fonts(&cc.egui_ctx);
-            
+
             // Create the app with optional ROM to load
             let app = ui::NesiumApp::with_rom(rom_to_load);
-            
+
             Ok(Box::new(app))
         }),
     )
@@ -101,7 +101,7 @@ fn load_icon() -> egui::IconData {
     if let Ok(icon) = load_icon_from_file() {
         return icon;
     }
-    
+
     // Fallback to programmatically generated icon
     generate_icon_fallback()
 }
@@ -118,14 +118,14 @@ fn load_icon_from_file() -> Result<egui::IconData, Box<dyn std::error::Error>> {
         "./resources/NESIUM.ico",
         "./resources/nesium-icon.png",
     ];
-    
+
     for path in &paths {
         if let Ok(data) = fs::read(path) {
             if let Ok(img) = image::load_from_memory(&data) {
                 let rgba = img.to_rgba8();
                 let (width, height) = rgba.dimensions();
                 let pixels = rgba.into_raw();
-                
+
                 log::info!("Loaded icon from: {}", path);
                 return Ok(egui::IconData {
                     rgba: pixels,
@@ -135,7 +135,7 @@ fn load_icon_from_file() -> Result<egui::IconData, Box<dyn std::error::Error>> {
             }
         }
     }
-    
+
     Err("Icon file not found".into())
 }
 
@@ -143,12 +143,12 @@ fn load_icon_from_file() -> Result<egui::IconData, Box<dyn std::error::Error>> {
 fn generate_icon_fallback() -> egui::IconData {
     let size = 64; // Higher resolution for better quality
     let mut rgba = vec![0u8; size * size * 4];
-    
+
     // Draw icon based on logo design - NES controller with NESIUM styling
     for y in 0..size {
         for x in 0..size {
             let i = (y * size + x) * 4;
-            
+
             // Background gradient (dark blue-gray)
             let bg_factor = (x as f32 / size as f32) * 0.3 + 0.7;
             let (r, g, b, a) = if x >= 8 && x < size - 8 && y >= 16 && y < size - 16 {
@@ -167,7 +167,9 @@ fn generate_icon_fallback() -> egui::IconData {
                 if (dpad_x >= 6 && dpad_x < 10 && dpad_y < 16) || // Up
                    (dpad_x >= 6 && dpad_x < 10 && dpad_y >= 12 && dpad_y < 16) || // Down
                    (dpad_x < 4 && dpad_y >= 6 && dpad_y < 10) || // Left
-                   (dpad_x >= 12 && dpad_x < 16 && dpad_y >= 6 && dpad_y < 10) { // Right
+                   (dpad_x >= 12 && dpad_x < 16 && dpad_y >= 6 && dpad_y < 10)
+                {
+                    // Right
                     (100, 180, 255, 255) // NES blue
                 } else if dpad_x >= 4 && dpad_x < 12 && dpad_y >= 4 && dpad_y < 12 {
                     (100, 180, 255, 200) // Center (lighter)
@@ -201,14 +203,14 @@ fn generate_icon_fallback() -> egui::IconData {
                 let b = (46.0 * bg_factor) as u8;
                 (r, g, b, 255)
             };
-            
+
             rgba[i] = r;
             rgba[i + 1] = g;
             rgba[i + 2] = b;
             rgba[i + 3] = a;
         }
     }
-    
+
     log::debug!("Generated fallback icon programmatically");
     egui::IconData {
         rgba,
@@ -220,22 +222,38 @@ fn generate_icon_fallback() -> egui::IconData {
 /// Set up custom fonts for better typography
 fn setup_fonts(ctx: &egui::Context) {
     let fonts = egui::FontDefinitions::default();
-    
+
     // Configure font sizes for a more modern look
     let mut style = (*ctx.style()).clone();
-    
+
     style.text_styles = [
-        (egui::TextStyle::Heading, egui::FontId::new(24.0, egui::FontFamily::Proportional)),
-        (egui::TextStyle::Body, egui::FontId::new(14.0, egui::FontFamily::Proportional)),
-        (egui::TextStyle::Monospace, egui::FontId::new(14.0, egui::FontFamily::Monospace)),
-        (egui::TextStyle::Button, egui::FontId::new(14.0, egui::FontFamily::Proportional)),
-        (egui::TextStyle::Small, egui::FontId::new(12.0, egui::FontFamily::Proportional)),
-    ].into();
-    
+        (
+            egui::TextStyle::Heading,
+            egui::FontId::new(24.0, egui::FontFamily::Proportional),
+        ),
+        (
+            egui::TextStyle::Body,
+            egui::FontId::new(14.0, egui::FontFamily::Proportional),
+        ),
+        (
+            egui::TextStyle::Monospace,
+            egui::FontId::new(14.0, egui::FontFamily::Monospace),
+        ),
+        (
+            egui::TextStyle::Button,
+            egui::FontId::new(14.0, egui::FontFamily::Proportional),
+        ),
+        (
+            egui::TextStyle::Small,
+            egui::FontId::new(12.0, egui::FontFamily::Proportional),
+        ),
+    ]
+    .into();
+
     // Spacing tweaks
     style.spacing.item_spacing = egui::vec2(8.0, 4.0);
     style.spacing.button_padding = egui::vec2(8.0, 4.0);
-    
+
     ctx.set_style(style);
     ctx.set_fonts(fonts);
 }

@@ -56,7 +56,11 @@ impl ControllerState {
     pub fn read(&mut self, strobe_active: bool) -> u8 {
         if strobe_active {
             // Strobe active: continuously return A button state
-            if self.a { 0x01 } else { 0x00 }
+            if self.a {
+                0x01
+            } else {
+                0x00
+            }
         } else {
             // Strobe inactive: read from shift register
             if self.read_count < 8 {
@@ -83,14 +87,14 @@ impl Input {
 
     pub fn write(&mut self, value: u8) {
         let new_strobe = (value & 0x01) != 0;
-        
+
         // Latch button states on falling edge of strobe (1 -> 0)
         if self.strobe && !new_strobe {
             // Strobe falling edge: latch current button states into shift registers
             self.controller1.latch();
             self.controller2.latch();
         }
-        
+
         self.strobe = new_strobe;
     }
 
@@ -106,17 +110,17 @@ impl Input {
         // Map SDL2 scancodes to NES buttons
         // Button order: A, B, Select, Start, Up, Down, Left, Right
         match scancode {
-            1073742048 | 97 => self.controller1.a = pressed,      // A key -> A button
-            1073742050 | 115 => self.controller1.b = pressed,    // S key -> B button
-            1073742052 | 13 => self.controller1.start = pressed,  // Enter -> Start
-            1073742053 => self.controller1.select = pressed,     // Right Shift -> Select
-            1073741904 => self.controller1.up = pressed,        // Up arrow -> Up
-            1073741905 => self.controller1.down = pressed,       // Down arrow -> Down
-            1073741903 => self.controller1.left = pressed,       // Left arrow -> Left
-            1073741906 => self.controller1.right = pressed,       // Right arrow -> Right
+            1073742048 | 97 => self.controller1.a = pressed, // A key -> A button
+            1073742050 | 115 => self.controller1.b = pressed, // S key -> B button
+            1073742052 | 13 => self.controller1.start = pressed, // Enter -> Start
+            1073742053 => self.controller1.select = pressed, // Right Shift -> Select
+            1073741904 => self.controller1.up = pressed,     // Up arrow -> Up
+            1073741905 => self.controller1.down = pressed,   // Down arrow -> Down
+            1073741903 => self.controller1.left = pressed,   // Left arrow -> Left
+            1073741906 => self.controller1.right = pressed,  // Right arrow -> Right
             _ => {}
         }
-        
+
         // Note: We don't latch here - latching only happens on strobe falling edge
         // The shift register will be updated the next time strobe goes from 1 to 0
     }

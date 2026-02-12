@@ -5,9 +5,8 @@
 //! framebuffer as an egui texture.
 
 mod app;
-mod settings;
 mod audio;
 mod launcher;
+mod settings;
 
 pub use app::NesiumApp;
-

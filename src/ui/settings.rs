@@ -190,54 +190,54 @@ impl Settings {
 
     fn dark_theme() -> egui::Visuals {
         let mut visuals = egui::Visuals::dark();
-        
+
         // Deep charcoal background
         visuals.panel_fill = egui::Color32::from_rgb(18, 18, 24);
         visuals.window_fill = egui::Color32::from_rgb(24, 24, 32);
         visuals.extreme_bg_color = egui::Color32::from_rgb(12, 12, 16);
-        
+
         // Accent colors - electric blue
         visuals.selection.bg_fill = egui::Color32::from_rgb(66, 135, 245);
         visuals.hyperlink_color = egui::Color32::from_rgb(100, 180, 255);
-        
+
         // Widget colors
         visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(35, 35, 45);
         visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(50, 50, 65);
         visuals.widgets.active.bg_fill = egui::Color32::from_rgb(66, 135, 245);
-        
+
         // Rounded corners via widget rounding
         visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(8);
         visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(6);
         visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(6);
         visuals.widgets.active.corner_radius = egui::CornerRadius::same(6);
-        
+
         visuals
     }
 
     fn light_theme() -> egui::Visuals {
         let mut visuals = egui::Visuals::light();
-        
+
         // Warm white background
         visuals.panel_fill = egui::Color32::from_rgb(252, 250, 248);
         visuals.window_fill = egui::Color32::from_rgb(255, 255, 255);
         visuals.extreme_bg_color = egui::Color32::from_rgb(245, 243, 240);
-        
+
         // Accent - warm coral
         visuals.selection.bg_fill = egui::Color32::from_rgb(230, 100, 90);
         visuals.hyperlink_color = egui::Color32::from_rgb(200, 80, 70);
-        
+
         // Rounded corners
         visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(8);
         visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(6);
         visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(6);
         visuals.widgets.active.corner_radius = egui::CornerRadius::same(6);
-        
+
         visuals
     }
 
     fn catppuccin_theme() -> egui::Visuals {
         let mut visuals = egui::Visuals::dark();
-        
+
         // Catppuccin Mocha colors
         let base = egui::Color32::from_rgb(30, 30, 46);
         let mantle = egui::Color32::from_rgb(24, 24, 37);
@@ -246,29 +246,29 @@ impl Settings {
         let surface1 = egui::Color32::from_rgb(69, 71, 90);
         let mauve = egui::Color32::from_rgb(203, 166, 247);
         let pink = egui::Color32::from_rgb(245, 194, 231);
-        
+
         visuals.panel_fill = base;
         visuals.window_fill = mantle;
         visuals.extreme_bg_color = crust;
-        
+
         visuals.selection.bg_fill = mauve;
         visuals.hyperlink_color = pink;
-        
+
         visuals.widgets.inactive.bg_fill = surface0;
         visuals.widgets.hovered.bg_fill = surface1;
         visuals.widgets.active.bg_fill = mauve;
-        
+
         visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(10);
         visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(8);
         visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(8);
         visuals.widgets.active.corner_radius = egui::CornerRadius::same(8);
-        
+
         visuals
     }
 
     fn nord_theme() -> egui::Visuals {
         let mut visuals = egui::Visuals::dark();
-        
+
         // Nord colors - polar night
         let nord0 = egui::Color32::from_rgb(46, 52, 64);
         let nord1 = egui::Color32::from_rgb(59, 66, 82);
@@ -277,23 +277,23 @@ impl Settings {
         // Frost
         let nord8 = egui::Color32::from_rgb(136, 192, 208);
         let nord9 = egui::Color32::from_rgb(129, 161, 193);
-        
+
         visuals.panel_fill = nord0;
         visuals.window_fill = nord1;
         visuals.extreme_bg_color = egui::Color32::from_rgb(36, 40, 50);
-        
+
         visuals.selection.bg_fill = nord8;
         visuals.hyperlink_color = nord9;
-        
+
         visuals.widgets.inactive.bg_fill = nord2;
         visuals.widgets.hovered.bg_fill = nord3;
         visuals.widgets.active.bg_fill = nord8;
-        
+
         visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(6);
         visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(4);
         visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(4);
         visuals.widgets.active.corner_radius = egui::CornerRadius::same(4);
-        
+
         visuals
     }
 }

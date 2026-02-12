@@ -60,14 +60,14 @@ pub struct NromMapper {
 pub struct UxromMapper {
     mirroring: Mirroring,
     has_chr_ram: bool,
-    prg_bank: u8, // Current bank selected for 0x8000-0xBFFF
+    prg_bank: u8,  // Current bank selected for 0x8000-0xBFFF
     prg_banks: u8, // Total number of PRG banks (16KB each)
 }
 
 pub struct CnromMapper {
     mirroring: Mirroring,
     has_chr_ram: bool,
-    chr_bank: u8, // Current CHR bank selected (8KB banks)
+    chr_bank: u8,  // Current CHR bank selected (8KB banks)
     chr_banks: u8, // Total number of CHR banks (8KB each)
 }
 
@@ -100,7 +100,7 @@ impl Mapper for NromMapper {
         // PPU addresses 0x0000-0x1FFF map to pattern tables
         // Mask address to pattern table range (0x0000-0x1FFF)
         let pattern_addr = addr & 0x1FFF;
-        
+
         if self.has_chr_ram {
             chr_ram[pattern_addr as usize]
         } else {
@@ -128,7 +128,7 @@ impl Mapper for NromMapper {
     fn mirroring(&self) -> Mirroring {
         self.mirroring
     }
-    
+
     fn mirroring_changed(&self) -> bool {
         false
     }
@@ -148,7 +148,11 @@ impl UxromMapper {
 
 impl CnromMapper {
     pub fn new(mirroring: Mirroring, has_chr_ram: bool, chr_rom_size: usize) -> Self {
-        let chr_banks = if has_chr_ram { 0 } else { (chr_rom_size / 0x2000) as u8 }; // Number of 8KB banks
+        let chr_banks = if has_chr_ram {
+            0
+        } else {
+            (chr_rom_size / 0x2000) as u8
+        }; // Number of 8KB banks
         Self {
             mirroring,
             has_chr_ram,
@@ -186,7 +190,7 @@ impl Mapper for UxromMapper {
     fn ppu_read(&self, addr: u16, chr_rom: &[u8], chr_ram: &[u8]) -> u8 {
         // PPU addresses 0x0000-0x1FFF map to pattern tables
         let pattern_addr = addr & 0x1FFF;
-        
+
         if self.has_chr_ram {
             chr_ram[pattern_addr as usize]
         } else {
@@ -211,7 +215,7 @@ impl Mapper for UxromMapper {
     fn mirroring(&self) -> Mirroring {
         self.mirroring
     }
-    
+
     fn mirroring_changed(&self) -> bool {
         false
     }
@@ -240,11 +244,17 @@ impl Mapper for CnromMapper {
             // Determine mask: 0x03 for <=4 banks, 0x0F for >4 banks
             let mask = if self.chr_banks > 4 { 0x0F } else { 0x03 };
             let new_bank = (value & mask) as u8;
-            
+
             // Always update bank (even if same) to match C reference behavior
             if new_bank != self.chr_bank {
-                log::info!("CNROM CHR bank switch: {} -> {} (value=0x{:02X}, mask=0x{:02X}, chr_banks={})", 
-                    self.chr_bank, new_bank, value, mask, self.chr_banks);
+                log::info!(
+                    "CNROM CHR bank switch: {} -> {} (value=0x{:02X}, mask=0x{:02X}, chr_banks={})",
+                    self.chr_bank,
+                    new_bank,
+                    value,
+                    mask,
+                    self.chr_banks
+                );
             }
             self.chr_bank = new_bank;
         }
@@ -255,7 +265,7 @@ impl Mapper for CnromMapper {
         // The address is added directly to the bank pointer without masking
         // Address should be in 0x0000-0x1FFF range, but we mask for safety
         let pattern_addr = addr & 0x1FFF;
-        
+
         if self.has_chr_ram {
             chr_ram[pattern_addr as usize]
         } else {
@@ -265,7 +275,7 @@ impl Mapper for CnromMapper {
             // The address is added directly to the bank pointer
             let bank_offset = self.chr_bank as usize * 0x2000;
             let idx = bank_offset + (pattern_addr as usize);
-            
+
             // Log first few reads to verify bank selection
             static mut READ_COUNT: u32 = 0;
             unsafe {
@@ -275,13 +285,17 @@ impl Mapper for CnromMapper {
                     READ_COUNT += 1;
                 }
             }
-            
+
             // Bounds check - should never exceed ROM size with proper banking
             if idx < chr_rom.len() {
                 chr_rom[idx]
             } else {
                 // Safety fallback - shouldn't happen with proper banking
-                log::warn!("CNROM ppu_read: idx 0x{:04X} exceeds chr_rom.len() 0x{:04X}", idx, chr_rom.len());
+                log::warn!(
+                    "CNROM ppu_read: idx 0x{:04X} exceeds chr_rom.len() 0x{:04X}",
+                    idx,
+                    chr_rom.len()
+                );
                 0
             }
         }
@@ -297,7 +311,7 @@ impl Mapper for CnromMapper {
     fn mirroring(&self) -> Mirroring {
         self.mirroring
     }
-    
+
     fn mirroring_changed(&self) -> bool {
         false
     }
@@ -318,44 +332,53 @@ fn next_power_of_2(n: usize) -> usize {
 pub struct Mmc1Mapper {
     mirroring: Mirroring,
     has_chr_ram: bool,
-    prg_banks: usize,  // Number of 16KB PRG banks
-    chr_banks: usize,  // Number of 8KB CHR banks (or 0 if CHR RAM)
+    prg_banks: usize,    // Number of 16KB PRG banks
+    chr_banks: usize,    // Number of 8KB CHR banks (or 0 if CHR RAM)
     prg_rom_size: usize, // Total PRG ROM size in bytes
-    
+
     // Shift register state
-    shift_reg: u8,  // 5-bit shift register (stored in lower 5 bits)
-    reg_init: u8,   // Initial value (0b100000 = 32)
-    
+    shift_reg: u8, // 5-bit shift register (stored in lower 5 bits)
+    reg_init: u8,  // Initial value (0b100000 = 32)
+
     // Control register (from 0x8000 writes)
-    chr_mode: u8,    // 0 = 8KB mode, 1 = 4KB mode
-    prg_mode: u8,    // 0/1 = 32KB, 2 = fix first, 3 = fix last
-    
+    chr_mode: u8, // 0 = 8KB mode, 1 = 4KB mode
+    prg_mode: u8, // 0/1 = 32KB, 2 = fix first, 3 = fix last
+
     // Bank registers
-    prg_reg: u8,     // PRG bank register
-    chr1_reg: u8,    // CHR bank 0 register
-    chr2_reg: u8,    // CHR bank 1 register
-    
+    prg_reg: u8,  // PRG bank register
+    chr1_reg: u8, // CHR bank 0 register
+    chr2_reg: u8, // CHR bank 1 register
+
     // Clamp values (power of 2 - 1)
     prg_clamp: u8,
     chr_clamp: u8,
-    
+
     // Current bank pointers (as offsets)
     prg_bank1_offset: usize,
     prg_bank2_offset: usize,
     chr_bank1_offset: usize,
     chr_bank2_offset: usize,
-    
+
     mirroring_changed_flag: bool,
-    
+
     // For ignoring consecutive writes on same cycle
     last_write_cycle: u64,
 }
 
 impl Mmc1Mapper {
-    pub fn new(mirroring: Mirroring, has_chr_ram: bool, prg_rom_size: usize, chr_rom_size: usize) -> Self {
+    pub fn new(
+        mirroring: Mirroring,
+        has_chr_ram: bool,
+        prg_rom_size: usize,
+        chr_rom_size: usize,
+    ) -> Self {
         let prg_banks = prg_rom_size / 0x4000; // 16KB banks
-        let chr_banks = if has_chr_ram { 0 } else { chr_rom_size / 0x2000 }; // 8KB banks
-        
+        let chr_banks = if has_chr_ram {
+            0
+        } else {
+            chr_rom_size / 0x2000
+        }; // 8KB banks
+
         // Calculate clamps (next power of 2 - 1) - matches C reference
         let prg_clamp = if prg_banks > 0 {
             let next_pow2 = next_power_of_2(prg_banks);
@@ -363,7 +386,7 @@ impl Mmc1Mapper {
         } else {
             0
         };
-        
+
         // CHR clamp: banks * 2 because CHR is in 4KB chunks for banking
         let chr_clamp = if chr_banks > 0 {
             let next_pow2 = next_power_of_2(chr_banks * 2);
@@ -371,10 +394,10 @@ impl Mmc1Mapper {
         } else {
             0
         };
-        
+
         log::info!("MMC1 mapper initialized: prg_banks={}, chr_banks={}, prg_clamp={}, chr_clamp={}, has_chr_ram={}",
             prg_banks, chr_banks, prg_clamp, chr_clamp, has_chr_ram);
-        
+
         // Initial state: PRG mode 3 (fix last bank), PRG bank 0
         let mut mapper = Self {
             mirroring,
@@ -398,17 +421,20 @@ impl Mmc1Mapper {
             mirroring_changed_flag: false,
             last_write_cycle: u64::MAX, // Different from any valid cycle
         };
-        
+
         // Initialize bank offsets
         mapper.update_prg_banks(prg_rom_size);
         mapper.update_chr_banks(chr_rom_size);
-        
-        log::info!("MMC1 initial banks: prg_bank1_offset=0x{:X}, prg_bank2_offset=0x{:X}",
-            mapper.prg_bank1_offset, mapper.prg_bank2_offset);
-        
+
+        log::info!(
+            "MMC1 initial banks: prg_bank1_offset=0x{:X}, prg_bank2_offset=0x{:X}",
+            mapper.prg_bank1_offset,
+            mapper.prg_bank2_offset
+        );
+
         mapper
     }
-    
+
     fn update_prg_banks(&mut self, prg_rom_size: usize) {
         // Match C reference implementation exactly
         match self.prg_mode {
@@ -427,10 +453,14 @@ impl Mmc1Mapper {
             3 => {
                 // Switch first bank, fix second bank (most common mode)
                 self.prg_bank1_offset = 0x4000 * (self.prg_reg as usize);
-                
+
                 if self.prg_banks > 16 {
                     // Large ROM (>256KB): use bit 4 to select 256KB region
-                    let bank256 = if (self.prg_reg & 0x10) != 0 { 1usize } else { 0 };
+                    let bank256 = if (self.prg_reg & 0x10) != 0 {
+                        1usize
+                    } else {
+                        0
+                    };
                     self.prg_bank2_offset = (bank256 + 1) * 0x40000 - 0x4000;
                 } else {
                     // Normal: last bank is fixed
@@ -439,14 +469,14 @@ impl Mmc1Mapper {
             }
             _ => {}
         }
-        
+
         // Ensure offsets are within ROM bounds
         if prg_rom_size > 0 {
             self.prg_bank1_offset %= prg_rom_size;
             self.prg_bank2_offset %= prg_rom_size;
         }
     }
-    
+
     fn update_chr_banks(&mut self, chr_rom_size: usize) {
         // Skip CHR banking if using CHR RAM
         if self.has_chr_ram || self.chr_banks == 0 {
@@ -454,7 +484,7 @@ impl Mmc1Mapper {
             self.chr_bank2_offset = 0x1000;
             return;
         }
-        
+
         if self.chr_mode == 1 {
             // 4KB mode: two independent 4KB banks
             self.chr_bank1_offset = 0x1000 * (self.chr1_reg as usize);
@@ -465,7 +495,7 @@ impl Mmc1Mapper {
             self.chr_bank1_offset = 0x1000 * bank_num;
             self.chr_bank2_offset = self.chr_bank1_offset + 0x1000;
         }
-        
+
         // Ensure offsets are within ROM bounds
         if chr_rom_size > 0 {
             self.chr_bank1_offset %= chr_rom_size;
@@ -479,7 +509,7 @@ impl Mapper for Mmc1Mapper {
         if prg_rom.is_empty() {
             return 0xFF;
         }
-        
+
         if addr < 0xC000 {
             // First 16KB bank (0x8000-0xBFFF)
             let offset = self.prg_bank1_offset + (addr as usize & 0x3FFF);
@@ -490,19 +520,19 @@ impl Mapper for Mmc1Mapper {
             prg_rom[offset % prg_rom.len()]
         }
     }
-    
+
     fn cpu_write(&mut self, addr: u16, value: u8, _prg_rom: &[u8], _prg_ram: &mut [u8]) {
         self.mirroring_changed_flag = false;
-        
+
         // MMC1 only responds to writes in the $8000-$FFFF range
         // Writes to $6000-$7FFF are PRG-RAM only, not mapper registers
         if addr < 0x8000 {
             return;
         }
-        
+
         let prg_rom_size = self.prg_rom_size;
         let chr_rom_size = self.chr_banks * 0x2000;
-        
+
         // Check for reset (bit 7 set)
         if (value & 0x80) != 0 {
             self.shift_reg = self.reg_init;
@@ -510,19 +540,19 @@ impl Mapper for Mmc1Mapper {
             self.update_prg_banks(prg_rom_size);
             return;
         }
-        
+
         // Shift register: accumulate bits (5 bits total)
         // Each write shifts right and adds the LSB of value to bit 5
         self.shift_reg = (self.shift_reg >> 1) | ((value & 0x01) << 5);
-        
+
         // Check if register is full (bit 0 is set after 5 shifts)
         if (self.shift_reg & 0x01) == 0 {
             return; // Not full yet
         }
-        
+
         // Register is full - remove the completion bit
         let reg_value = self.shift_reg >> 1;
-        
+
         // Route to appropriate register based on address (matching C reference)
         match addr & 0xE000 {
             0x8000 => {
@@ -539,10 +569,10 @@ impl Mapper for Mmc1Mapper {
                     self.mirroring = new_mirroring;
                     self.mirroring_changed_flag = true;
                 }
-                
+
                 self.chr_mode = (reg_value >> 4) & 0x01;
                 self.prg_mode = (reg_value >> 2) & 0x03;
-                
+
                 self.update_prg_banks(prg_rom_size);
                 self.update_chr_banks(chr_rom_size);
             }
@@ -590,20 +620,20 @@ impl Mapper for Mmc1Mapper {
             }
             _ => {}
         }
-        
+
         // Reset shift register
         self.shift_reg = self.reg_init;
     }
-    
+
     fn ppu_read(&self, addr: u16, chr_rom: &[u8], chr_ram: &[u8]) -> u8 {
         if self.has_chr_ram {
             return chr_ram[addr as usize % chr_ram.len().max(1)];
         }
-        
+
         if chr_rom.is_empty() {
             return 0;
         }
-        
+
         let pattern_addr = addr & 0x1FFF;
         if pattern_addr < 0x1000 {
             let offset = self.chr_bank1_offset + pattern_addr as usize;
@@ -613,18 +643,18 @@ impl Mapper for Mmc1Mapper {
             chr_rom[offset % chr_rom.len()]
         }
     }
-    
+
     fn ppu_write(&mut self, addr: u16, value: u8, chr_ram: &mut [u8]) {
         if self.has_chr_ram && !chr_ram.is_empty() {
             chr_ram[addr as usize % chr_ram.len()] = value;
         }
         // CHR ROM is read-only
     }
-    
+
     fn mirroring(&self) -> Mirroring {
         self.mirroring
     }
-    
+
     fn mirroring_changed(&self) -> bool {
         self.mirroring_changed_flag
     }
@@ -636,44 +666,49 @@ pub struct Mmc3Mapper {
     has_chr_ram: bool,
     prg_rom_size: usize,
     chr_rom_size: usize,
-    
+
     // PRG banking: 4x 8KB banks
     // Bank 0: $8000-$9FFF (switchable or fixed to 2nd-last)
     // Bank 1: $A000-$BFFF (switchable R7)
     // Bank 2: $C000-$DFFF (fixed to 2nd-last or switchable)
     // Bank 3: $E000-$FFFF (fixed to last)
     prg_bank_offsets: [usize; 4],
-    
+
     // CHR banking: 8x 1KB banks
     chr_bank_offsets: [usize; 8],
-    
+
     // Bank select register
-    bank_select: u8,      // Which bank register to update next
-    prg_mode: bool,       // false: $8000 switchable, true: $C000 switchable  
-    chr_inversion: bool,  // Swap CHR bank regions
-    
+    bank_select: u8,     // Which bank register to update next
+    prg_mode: bool,      // false: $8000 switchable, true: $C000 switchable
+    chr_inversion: bool, // Swap CHR bank regions
+
     // Bank data registers R0-R7
     bank_data: [u8; 8],
-    
+
     // IRQ counter
     irq_latch: u8,
     irq_counter: u8,
     irq_reload: bool,
     irq_enabled: bool,
     irq_pending: bool,
-    
+
     // Clamp values
     prg_clamp: u8,
     chr_clamp: u8,
-    
+
     mirroring_changed_flag: bool,
 }
 
 impl Mmc3Mapper {
-    pub fn new(mirroring: Mirroring, has_chr_ram: bool, prg_rom_size: usize, chr_rom_size: usize) -> Self {
+    pub fn new(
+        mirroring: Mirroring,
+        has_chr_ram: bool,
+        prg_rom_size: usize,
+        chr_rom_size: usize,
+    ) -> Self {
         let prg_banks_8k = prg_rom_size / 0x2000; // 8KB banks
         let chr_banks_1k = if has_chr_ram { 8 } else { chr_rom_size / 0x400 }; // 1KB banks
-        
+
         // Calculate clamps (next power of 2 - 1)
         let prg_clamp = if prg_banks_8k > 0 {
             (next_power_of_2(prg_banks_8k) - 1) as u8
@@ -685,10 +720,10 @@ impl Mmc3Mapper {
         } else {
             0
         };
-        
+
         log::info!("MMC3 mapper initialized: prg_8k_banks={}, chr_1k_banks={}, prg_clamp={}, chr_clamp={}, has_chr_ram={}",
             prg_banks_8k, chr_banks_1k, prg_clamp, chr_clamp, has_chr_ram);
-        
+
         let mut mapper = Self {
             mirroring,
             has_chr_ram,
@@ -709,28 +744,28 @@ impl Mmc3Mapper {
             chr_clamp,
             mirroring_changed_flag: false,
         };
-        
+
         // Initialize PRG banks: last two 8KB banks fixed
         let last_bank = prg_rom_size.saturating_sub(0x2000);
         let second_last = prg_rom_size.saturating_sub(0x4000);
         mapper.prg_bank_offsets[2] = second_last;
         mapper.prg_bank_offsets[3] = last_bank;
-        
+
         // Initialize CHR banks
         for i in 0..8 {
             mapper.chr_bank_offsets[i] = i * 0x400;
         }
-        
+
         mapper
     }
-    
+
     fn update_prg_banks(&mut self) {
         let second_last = self.prg_rom_size.saturating_sub(0x4000);
         let last = self.prg_rom_size.saturating_sub(0x2000);
-        
+
         let r6 = (self.bank_data[6] & self.prg_clamp) as usize * 0x2000;
         let r7 = (self.bank_data[7] & self.prg_clamp) as usize * 0x2000;
-        
+
         if self.prg_mode {
             // PRG mode 1: $8000 = 2nd-last, $C000 = R6
             self.prg_bank_offsets[0] = second_last;
@@ -742,7 +777,7 @@ impl Mmc3Mapper {
         }
         self.prg_bank_offsets[1] = r7;
         self.prg_bank_offsets[3] = last;
-        
+
         // Ensure within bounds
         for offset in &mut self.prg_bank_offsets {
             if self.prg_rom_size > 0 {
@@ -750,7 +785,7 @@ impl Mmc3Mapper {
             }
         }
     }
-    
+
     fn update_chr_banks(&mut self) {
         if self.has_chr_ram {
             // CHR RAM: simple linear mapping
@@ -759,7 +794,7 @@ impl Mmc3Mapper {
             }
             return;
         }
-        
+
         // R0 and R1 are 2KB banks (bits 0 ignored)
         let r0 = (self.bank_data[0] & 0xFE & self.chr_clamp) as usize * 0x400;
         let r1 = (self.bank_data[1] & 0xFE & self.chr_clamp) as usize * 0x400;
@@ -768,7 +803,7 @@ impl Mmc3Mapper {
         let r3 = (self.bank_data[3] & self.chr_clamp) as usize * 0x400;
         let r4 = (self.bank_data[4] & self.chr_clamp) as usize * 0x400;
         let r5 = (self.bank_data[5] & self.chr_clamp) as usize * 0x400;
-        
+
         if self.chr_inversion {
             // CHR A12 inversion: swap 2KB and 1KB regions
             // $0000-$0FFF: R2,R3,R4,R5 (1KB each)
@@ -782,7 +817,7 @@ impl Mmc3Mapper {
             self.chr_bank_offsets[6] = r1;
             self.chr_bank_offsets[7] = r1 + 0x400;
         } else {
-            // Normal: 
+            // Normal:
             // $0000-$0FFF: R0,R0+1,R1,R1+1 (2KB each)
             // $1000-$1FFF: R2,R3,R4,R5 (1KB each)
             self.chr_bank_offsets[0] = r0;
@@ -794,14 +829,14 @@ impl Mmc3Mapper {
             self.chr_bank_offsets[6] = r4;
             self.chr_bank_offsets[7] = r5;
         }
-        
+
         // Ensure within bounds
         let chr_size = self.chr_rom_size.max(1);
         for offset in &mut self.chr_bank_offsets {
             *offset %= chr_size;
         }
     }
-    
+
     /// Called by PPU on each scanline when rendering is enabled
     pub fn clock_irq(&mut self) -> bool {
         if self.irq_counter == 0 || self.irq_reload {
@@ -810,18 +845,18 @@ impl Mmc3Mapper {
         } else {
             self.irq_counter -= 1;
         }
-        
+
         if self.irq_counter == 0 && self.irq_enabled {
             self.irq_pending = true;
             return true;
         }
         false
     }
-    
+
     pub fn irq_pending(&self) -> bool {
         self.irq_pending
     }
-    
+
     pub fn acknowledge_irq(&mut self) {
         self.irq_pending = false;
     }
@@ -832,19 +867,19 @@ impl Mapper for Mmc3Mapper {
         if prg_rom.is_empty() {
             return 0xFF;
         }
-        
+
         let bank = ((addr - 0x8000) / 0x2000) as usize;
         let offset = self.prg_bank_offsets[bank] + (addr as usize & 0x1FFF);
         prg_rom[offset % prg_rom.len()]
     }
-    
+
     fn cpu_write(&mut self, addr: u16, value: u8, _prg_rom: &[u8], _prg_ram: &mut [u8]) {
         self.mirroring_changed_flag = false;
-        
+
         if addr < 0x8000 {
             return;
         }
-        
+
         match addr & 0xE001 {
             0x8000 => {
                 // Bank select
@@ -901,44 +936,44 @@ impl Mapper for Mmc3Mapper {
             _ => {}
         }
     }
-    
+
     fn ppu_read(&self, addr: u16, chr_rom: &[u8], chr_ram: &[u8]) -> u8 {
         if self.has_chr_ram {
             return chr_ram[addr as usize % chr_ram.len().max(1)];
         }
-        
+
         if chr_rom.is_empty() {
             return 0;
         }
-        
+
         // Each 1KB bank
         let bank = (addr / 0x400) as usize;
         let offset = self.chr_bank_offsets[bank] + (addr as usize & 0x3FF);
         chr_rom[offset % chr_rom.len()]
     }
-    
+
     fn ppu_write(&mut self, addr: u16, value: u8, chr_ram: &mut [u8]) {
         if self.has_chr_ram && !chr_ram.is_empty() {
             chr_ram[addr as usize % chr_ram.len()] = value;
         }
     }
-    
+
     fn mirroring(&self) -> Mirroring {
         self.mirroring
     }
-    
+
     fn mirroring_changed(&self) -> bool {
         self.mirroring_changed_flag
     }
-    
+
     fn clock_scanline(&mut self) -> bool {
         self.clock_irq()
     }
-    
+
     fn irq_pending(&self) -> bool {
         self.irq_pending
     }
-    
+
     fn acknowledge_irq(&mut self) {
         self.irq_pending = false;
     }
@@ -986,9 +1021,13 @@ impl Cartridge {
             // Bit 0 = 1 -> Vertical (for vertical scrolling games)
             Mirroring::Vertical
         };
-        log::info!("iNES flags6: 0x{:02X}, mirroring bit (bit 0): {}, mirroring: {:?}", 
-            flags6, flags6 & 0x01, mirroring);
-        
+        log::info!(
+            "iNES flags6: 0x{:02X}, mirroring bit (bit 0): {}, mirroring: {:?}",
+            flags6,
+            flags6 & 0x01,
+            mirroring
+        );
+
         // Note: Horizontal scrolling games use VERTICAL mirroring (counterintuitive!)
         // Vertical mirroring: nametables 0+2 share, 1+3 share - allows horizontal scrolling
         // Horizontal mirroring: nametables 0+1 share, 2+3 share - allows vertical scrolling
@@ -1018,10 +1057,20 @@ impl Cartridge {
 
         let mapper: Box<dyn Mapper> = match mapper_id {
             0 => Box::new(NromMapper::new(mirroring, has_chr_ram)),
-            1 => Box::new(Mmc1Mapper::new(mirroring, has_chr_ram, prg_rom_size, chr_rom_size)),
+            1 => Box::new(Mmc1Mapper::new(
+                mirroring,
+                has_chr_ram,
+                prg_rom_size,
+                chr_rom_size,
+            )),
             2 => Box::new(UxromMapper::new(mirroring, has_chr_ram, prg_rom_size)),
             3 => Box::new(CnromMapper::new(mirroring, has_chr_ram, chr_rom_size)),
-            4 => Box::new(Mmc3Mapper::new(mirroring, has_chr_ram, prg_rom_size, chr_rom_size)),
+            4 => Box::new(Mmc3Mapper::new(
+                mirroring,
+                has_chr_ram,
+                prg_rom_size,
+                chr_rom_size,
+            )),
             _ => return Err(CartridgeError::UnsupportedMapper(mapper_id)),
         };
 
@@ -1034,19 +1083,28 @@ impl Cartridge {
             has_ram,
             mirroring,
         };
-        
+
         // Read reset vector (at 0xFFFC-0xFFFD)
         let reset_low = cart.mapper.cpu_read(0xFFFC, &cart.prg_rom);
         let reset_high = cart.mapper.cpu_read(0xFFFD, &cart.prg_rom);
         let reset_vector = (reset_high as u16) << 8 | reset_low as u16;
-        
+
         // Read first instruction at reset vector
         let first_opcode = cart.mapper.cpu_read(reset_vector, &cart.prg_rom);
-        
-        log::info!("Cartridge loaded: mapper={}, prg_size={}KB, chr_size={}KB, mirroring={:?}",
-            mapper_id, prg_rom_size / 1024, chr_rom_size / 1024, mirroring);
-        log::info!("Reset vector: 0x{:04X}, first opcode: 0x{:02X}", reset_vector, first_opcode);
-        
+
+        log::info!(
+            "Cartridge loaded: mapper={}, prg_size={}KB, chr_size={}KB, mirroring={:?}",
+            mapper_id,
+            prg_rom_size / 1024,
+            chr_rom_size / 1024,
+            mirroring
+        );
+        log::info!(
+            "Reset vector: 0x{:04X}, first opcode: 0x{:02X}",
+            reset_vector,
+            first_opcode
+        );
+
         Ok(cart)
     }
 
@@ -1068,17 +1126,17 @@ impl Cartridge {
     pub fn ppu_write(&mut self, addr: u16, value: u8, chr_ram: &mut [u8]) {
         self.mapper.ppu_write(addr, value, chr_ram);
     }
-    
+
     /// Clock the mapper's scanline counter (for MMC3 IRQ)
     pub fn clock_scanline(&mut self) -> bool {
         self.mapper.clock_scanline()
     }
-    
+
     /// Check if mapper has a pending IRQ
     pub fn irq_pending(&self) -> bool {
         self.mapper.irq_pending()
     }
-    
+
     /// Acknowledge mapper IRQ
     pub fn acknowledge_irq(&mut self) {
         self.mapper.acknowledge_irq();

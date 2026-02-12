@@ -6,15 +6,15 @@
 use std::panic;
 use std::sync::Mutex;
 
-use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JIntArray, JString};
 use jni::sys::{jboolean, jfloatArray, jint, JNI_TRUE};
+use jni::JNIEnv;
 
 use nesium::cartridge::Cartridge;
 use nesium::cpu::{Cpu, CpuBus, FLAG_I};
 use nesium::memory::MemoryBus;
 use nesium::trace::TraceState;
-use nesium::{NES_WIDTH, NES_HEIGHT, NES_PALETTE, PPU_CYCLES_PER_FRAME, CPU_CYCLES_PER_PPU_CYCLE};
+use nesium::{CPU_CYCLES_PER_PPU_CYCLE, NES_HEIGHT, NES_PALETTE, NES_WIDTH, PPU_CYCLES_PER_FRAME};
 
 /// NES emulator state
 struct NesEmulator {
@@ -61,10 +61,9 @@ impl NesEmulator {
             self.cpu_cycle_accumulator += CPU_CYCLES_PER_PPU_CYCLE;
 
             while self.cpu_cycle_accumulator >= 1.0 {
-                let cpu_cycles = self.cpu.step(
-                    &mut self.memory as &mut dyn CpuBus,
-                    &mut self.trace,
-                );
+                let cpu_cycles = self
+                    .cpu
+                    .step(&mut self.memory as &mut dyn CpuBus, &mut self.trace);
                 self.cpu_cycle_accumulator -= cpu_cycles as f64;
 
                 let irq = self.memory.step_apu(cpu_cycles as u64);
@@ -119,7 +118,14 @@ impl NesEmulator {
 /// NES controller buttons
 #[derive(Debug, Clone, Copy)]
 enum NesButton {
-    A, B, Select, Start, Right, Left, Up, Down,
+    A,
+    B,
+    Select,
+    Start,
+    Right,
+    Left,
+    Up,
+    Down,
 }
 
 fn int_to_button(button: jint) -> Option<NesButton> {
@@ -145,10 +151,7 @@ static EMULATOR: Mutex<Option<NesEmulator>> = Mutex::new(None);
 
 /// Initialize Android logging
 #[no_mangle]
-pub extern "system" fn Java_com_nesium_NesiumCore_initLogging(
-    _env: JNIEnv,
-    _class: JClass,
-) {
+pub extern "system" fn Java_com_nesium_NesiumCore_initLogging(_env: JNIEnv, _class: JClass) {
     android_logger::init_once(
         android_logger::Config::default()
             .with_max_level(log::LevelFilter::Debug)
@@ -197,10 +200,12 @@ fn load_rom_from_bytes_inner(env: JNIEnv, rom_data: JByteArray) -> jboolean {
 
     match Cartridge::load_from_bytes(rom_bytes) {
         Ok(cartridge) => {
-            log::info!("Cartridge loaded: mapper={}, prg={}KB, chr={}KB",
+            log::info!(
+                "Cartridge loaded: mapper={}, prg={}KB, chr={}KB",
                 cartridge.mapper_id,
                 cartridge.prg_rom.len() / 1024,
-                cartridge.chr_rom.len() / 1024);
+                cartridge.chr_rom.len() / 1024
+            );
 
             match EMULATOR.lock() {
                 Ok(mut emu) => {
@@ -255,19 +260,17 @@ fn load_rom_from_path_inner(env: &mut JNIEnv, path: &JString) -> jboolean {
     log::info!("Loading ROM from path: {}", path_str);
 
     match Cartridge::load(&path_str) {
-        Ok(cartridge) => {
-            match EMULATOR.lock() {
-                Ok(mut emu) => {
-                    *emu = Some(NesEmulator::new(cartridge));
-                    log::info!("ROM loaded from path successfully");
-                    JNI_TRUE as jboolean
-                }
-                Err(e) => {
-                    log::error!("Failed to lock emulator mutex: {}", e);
-                    0
-                }
+        Ok(cartridge) => match EMULATOR.lock() {
+            Ok(mut emu) => {
+                *emu = Some(NesEmulator::new(cartridge));
+                log::info!("ROM loaded from path successfully");
+                JNI_TRUE as jboolean
             }
-        }
+            Err(e) => {
+                log::error!("Failed to lock emulator mutex: {}", e);
+                0
+            }
+        },
         Err(e) => {
             log::error!("Failed to load ROM from path: {}", e);
             0
@@ -319,7 +322,8 @@ fn run_frame_inner(env: JNIEnv, framebuffer: JIntArray) -> jint {
             let palette_idx = (fb[i] as usize) & 0x3F; // Mask to 64 colors
             let [r, g, b] = NES_PALETTE[palette_idx];
             // ARGB format for Android
-            argb_buffer[i] = ((0xFF_u32 << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)) as i32;
+            argb_buffer[i] =
+                ((0xFF_u32 << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)) as i32;
         }
 
         if let Err(e) = env.set_int_array_region(&framebuffer, 0, &argb_buffer) {
@@ -433,7 +437,11 @@ pub extern "system" fn Java_com_nesium_NesiumCore_isRomLoaded(
     _class: JClass,
 ) -> jboolean {
     if let Ok(emu) = EMULATOR.lock() {
-        if emu.is_some() { JNI_TRUE as jboolean } else { 0 }
+        if emu.is_some() {
+            JNI_TRUE as jboolean
+        } else {
+            0
+        }
     } else {
         0
     }
@@ -441,10 +449,7 @@ pub extern "system" fn Java_com_nesium_NesiumCore_isRomLoaded(
 
 /// Unload the current ROM
 #[no_mangle]
-pub extern "system" fn Java_com_nesium_NesiumCore_unloadRom(
-    _env: JNIEnv,
-    _class: JClass,
-) {
+pub extern "system" fn Java_com_nesium_NesiumCore_unloadRom(_env: JNIEnv, _class: JClass) {
     if let Ok(mut emu) = EMULATOR.lock() {
         *emu = None;
         log::info!("ROM unloaded");

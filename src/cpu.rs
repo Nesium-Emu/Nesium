@@ -1,5 +1,5 @@
+use crate::trace::{disassemble_instruction, TraceState};
 use log::trace;
-use crate::trace::{TraceState, disassemble_instruction};
 
 #[derive(Debug, Clone)]
 pub struct Cpu {
@@ -65,7 +65,12 @@ impl Cpu {
         self.sp = self.sp.wrapping_sub(3);
         self.status |= FLAG_I;
         self.pc = self.read_word(0xFFFC, bus);
-        log::info!("CPU Reset: PC=0x{:04X}, SP=0x{:02X}, Status=0x{:02X}", self.pc, self.sp, self.status);
+        log::info!(
+            "CPU Reset: PC=0x{:04X}, SP=0x{:02X}, Status=0x{:02X}",
+            self.pc,
+            self.sp,
+            self.status
+        );
     }
 
     pub fn step(&mut self, bus: &mut dyn CpuBus, trace_state: &mut TraceState) -> u64 {
@@ -76,7 +81,8 @@ impl Cpu {
             cycles += self.handle_interrupt(interrupt, bus);
             if trace_state.enabled {
                 // Trace interrupt handling
-                println!("{:04X}  {:02X}     {:20} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:{}",
+                println!(
+                    "{:04X}  {:02X}     {:20} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:{}",
                     self.pc,
                     0x00, // Interrupt marker
                     match interrupt {
@@ -84,7 +90,11 @@ impl Cpu {
                         Interrupt::Irq => "IRQ",
                         _ => "???",
                     },
-                    self.a, self.x, self.y, self.status, self.sp,
+                    self.a,
+                    self.x,
+                    self.y,
+                    self.status,
+                    self.sp,
                     trace_state.get_cycle_count()
                 );
             }
@@ -102,7 +112,7 @@ impl Cpu {
         let pc_before = self.pc;
         let opcode = bus.read(self.pc);
         self.pc = self.pc.wrapping_add(1);
-        
+
         // Read operands for disassembly (peek ahead, don't advance PC)
         let operand1 = if self.needs_operand1(opcode) {
             Some(bus.read(self.pc))
@@ -114,7 +124,7 @@ impl Cpu {
         } else {
             None
         };
-        
+
         // Restore PC for actual execution
         self.pc = pc_before.wrapping_add(1);
 
@@ -126,11 +136,16 @@ impl Cpu {
                 _ => format!("{:02X}        ", opcode),
             };
             let disasm = disassemble_instruction(opcode, operand1, operand2);
-            println!("{:04X} {} {:20} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:{}",
+            println!(
+                "{:04X} {} {:20} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:{}",
                 pc_before,
                 opcode_bytes,
                 disasm,
-                self.a, self.x, self.y, self.status, self.sp,
+                self.a,
+                self.x,
+                self.y,
+                self.status,
+                self.sp,
                 trace_state.get_cycle_count()
             );
         } else {
@@ -150,20 +165,93 @@ impl Cpu {
         self.cycles += cycles;
         cycles
     }
-    
+
     fn needs_operand1(&self, opcode: u8) -> bool {
         // Instructions that DON'T need operand bytes (implied/accumulator addressing)
-        !matches!(opcode,
-            0x00 | 0x08 | 0x0A | 0x18 | 0x28 | 0x2A | 0x38 | 0x40 | 0x48 | 0x4A | 0x58 | 0x60 | 0x68 | 0x6A | 0x78 | 0x88 | 0x8A | 0x98 | 0x9A | 0xA8 | 0xAA | 0xB8 | 0xBA | 0xC8 | 0xCA | 0xD8 | 0xE8 | 0xEA | 0xF8
+        !matches!(
+            opcode,
+            0x00 | 0x08
+                | 0x0A
+                | 0x18
+                | 0x28
+                | 0x2A
+                | 0x38
+                | 0x40
+                | 0x48
+                | 0x4A
+                | 0x58
+                | 0x60
+                | 0x68
+                | 0x6A
+                | 0x78
+                | 0x88
+                | 0x8A
+                | 0x98
+                | 0x9A
+                | 0xA8
+                | 0xAA
+                | 0xB8
+                | 0xBA
+                | 0xC8
+                | 0xCA
+                | 0xD8
+                | 0xE8
+                | 0xEA
+                | 0xF8
         ) // All others need at least 1 operand
     }
-    
+
     fn needs_operand2(&self, opcode: u8) -> bool {
         // Instructions that need 2 operand bytes (absolute addressing, JSR, JMP indirect)
-        matches!(opcode,
+        matches!(
+            opcode,
             0x20 | 0x4C | 0x6C // JSR, JMP absolute, JMP indirect
-        ) || matches!(opcode,
-            0x0D | 0x0E | 0x19 | 0x1D | 0x1E | 0x2C | 0x2D | 0x2E | 0x39 | 0x3D | 0x3E | 0x4D | 0x4E | 0x59 | 0x5D | 0x5E | 0x6D | 0x6E | 0x79 | 0x7D | 0x7E | 0x8C | 0x8D | 0x8E | 0x99 | 0x9D | 0xAC | 0xAD | 0xAE | 0xB9 | 0xBC | 0xBD | 0xBE | 0xCC | 0xCD | 0xCE | 0xD9 | 0xDD | 0xDE | 0xEC | 0xED | 0xEE | 0xF9 | 0xFD | 0xFE
+        ) || matches!(
+            opcode,
+            0x0D | 0x0E
+                | 0x19
+                | 0x1D
+                | 0x1E
+                | 0x2C
+                | 0x2D
+                | 0x2E
+                | 0x39
+                | 0x3D
+                | 0x3E
+                | 0x4D
+                | 0x4E
+                | 0x59
+                | 0x5D
+                | 0x5E
+                | 0x6D
+                | 0x6E
+                | 0x79
+                | 0x7D
+                | 0x7E
+                | 0x8C
+                | 0x8D
+                | 0x8E
+                | 0x99
+                | 0x9D
+                | 0xAC
+                | 0xAD
+                | 0xAE
+                | 0xB9
+                | 0xBC
+                | 0xBD
+                | 0xBE
+                | 0xCC
+                | 0xCD
+                | 0xCE
+                | 0xD9
+                | 0xDD
+                | 0xDE
+                | 0xEC
+                | 0xED
+                | 0xEE
+                | 0xF9
+                | 0xFD
+                | 0xFE
         ) // Absolute addressing modes
     }
 
@@ -171,7 +259,7 @@ impl Cpu {
         // This will be handled by the emulator core checking PPU NMI
         Interrupt::None
     }
-    
+
     /// Helper function to handle writes that might be OAMDMA
     /// Returns true if OAMDMA was triggered (and stall_cycles was set)
     fn handle_write_with_oamdma(&mut self, bus: &mut dyn CpuBus, addr: u16, value: u8) -> bool {
@@ -1205,7 +1293,8 @@ impl Cpu {
             // ============================================
 
             // *SLO - ASL + ORA (Shift Left then OR with Accumulator)
-            0x03 => { // (indirect, X)
+            0x03 => {
+                // (indirect, X)
                 let (addr, _) = self.addr_indirect_x(bus);
                 let value = bus.read(addr);
                 let shifted = self.asl(value);
@@ -1213,7 +1302,8 @@ impl Cpu {
                 self.ora(shifted);
                 8
             }
-            0x07 => { // zero page
+            0x07 => {
+                // zero page
                 let addr = self.addr_zero_page(bus);
                 let value = bus.read(addr);
                 let shifted = self.asl(value);
@@ -1221,7 +1311,8 @@ impl Cpu {
                 self.ora(shifted);
                 5
             }
-            0x0F => { // absolute
+            0x0F => {
+                // absolute
                 let addr = self.addr_absolute(bus);
                 let value = bus.read(addr);
                 let shifted = self.asl(value);
@@ -1229,7 +1320,8 @@ impl Cpu {
                 self.ora(shifted);
                 6
             }
-            0x13 => { // (indirect), Y
+            0x13 => {
+                // (indirect), Y
                 let (addr, _) = self.addr_indirect_y(bus);
                 let value = bus.read(addr);
                 let shifted = self.asl(value);
@@ -1237,7 +1329,8 @@ impl Cpu {
                 self.ora(shifted);
                 8
             }
-            0x17 => { // zero page, X
+            0x17 => {
+                // zero page, X
                 let addr = self.addr_zero_page_x(bus);
                 let value = bus.read(addr);
                 let shifted = self.asl(value);
@@ -1245,7 +1338,8 @@ impl Cpu {
                 self.ora(shifted);
                 6
             }
-            0x1B => { // absolute, Y
+            0x1B => {
+                // absolute, Y
                 let (addr, _) = self.addr_absolute_y(bus);
                 let value = bus.read(addr);
                 let shifted = self.asl(value);
@@ -1253,7 +1347,8 @@ impl Cpu {
                 self.ora(shifted);
                 7
             }
-            0x1F => { // absolute, X
+            0x1F => {
+                // absolute, X
                 let (addr, _) = self.addr_absolute_x(bus);
                 let value = bus.read(addr);
                 let shifted = self.asl(value);
@@ -1263,7 +1358,8 @@ impl Cpu {
             }
 
             // *RLA - ROL + AND (Rotate Left then AND with Accumulator)
-            0x23 => { // (indirect, X)
+            0x23 => {
+                // (indirect, X)
                 let (addr, _) = self.addr_indirect_x(bus);
                 let value = bus.read(addr);
                 let rotated = self.rol(value);
@@ -1271,7 +1367,8 @@ impl Cpu {
                 self.and(rotated);
                 8
             }
-            0x27 => { // zero page
+            0x27 => {
+                // zero page
                 let addr = self.addr_zero_page(bus);
                 let value = bus.read(addr);
                 let rotated = self.rol(value);
@@ -1279,7 +1376,8 @@ impl Cpu {
                 self.and(rotated);
                 5
             }
-            0x2F => { // absolute
+            0x2F => {
+                // absolute
                 let addr = self.addr_absolute(bus);
                 let value = bus.read(addr);
                 let rotated = self.rol(value);
@@ -1287,7 +1385,8 @@ impl Cpu {
                 self.and(rotated);
                 6
             }
-            0x33 => { // (indirect), Y
+            0x33 => {
+                // (indirect), Y
                 let (addr, _) = self.addr_indirect_y(bus);
                 let value = bus.read(addr);
                 let rotated = self.rol(value);
@@ -1295,7 +1394,8 @@ impl Cpu {
                 self.and(rotated);
                 8
             }
-            0x37 => { // zero page, X
+            0x37 => {
+                // zero page, X
                 let addr = self.addr_zero_page_x(bus);
                 let value = bus.read(addr);
                 let rotated = self.rol(value);
@@ -1303,7 +1403,8 @@ impl Cpu {
                 self.and(rotated);
                 6
             }
-            0x3B => { // absolute, Y
+            0x3B => {
+                // absolute, Y
                 let (addr, _) = self.addr_absolute_y(bus);
                 let value = bus.read(addr);
                 let rotated = self.rol(value);
@@ -1311,7 +1412,8 @@ impl Cpu {
                 self.and(rotated);
                 7
             }
-            0x3F => { // absolute, X
+            0x3F => {
+                // absolute, X
                 let (addr, _) = self.addr_absolute_x(bus);
                 let value = bus.read(addr);
                 let rotated = self.rol(value);
@@ -1321,7 +1423,8 @@ impl Cpu {
             }
 
             // *SRE - LSR + EOR (Shift Right then XOR with Accumulator)
-            0x43 => { // (indirect, X)
+            0x43 => {
+                // (indirect, X)
                 let (addr, _) = self.addr_indirect_x(bus);
                 let value = bus.read(addr);
                 let shifted = self.lsr(value);
@@ -1329,7 +1432,8 @@ impl Cpu {
                 self.eor(shifted);
                 8
             }
-            0x47 => { // zero page
+            0x47 => {
+                // zero page
                 let addr = self.addr_zero_page(bus);
                 let value = bus.read(addr);
                 let shifted = self.lsr(value);
@@ -1337,7 +1441,8 @@ impl Cpu {
                 self.eor(shifted);
                 5
             }
-            0x4F => { // absolute
+            0x4F => {
+                // absolute
                 let addr = self.addr_absolute(bus);
                 let value = bus.read(addr);
                 let shifted = self.lsr(value);
@@ -1345,7 +1450,8 @@ impl Cpu {
                 self.eor(shifted);
                 6
             }
-            0x53 => { // (indirect), Y
+            0x53 => {
+                // (indirect), Y
                 let (addr, _) = self.addr_indirect_y(bus);
                 let value = bus.read(addr);
                 let shifted = self.lsr(value);
@@ -1353,7 +1459,8 @@ impl Cpu {
                 self.eor(shifted);
                 8
             }
-            0x57 => { // zero page, X
+            0x57 => {
+                // zero page, X
                 let addr = self.addr_zero_page_x(bus);
                 let value = bus.read(addr);
                 let shifted = self.lsr(value);
@@ -1361,7 +1468,8 @@ impl Cpu {
                 self.eor(shifted);
                 6
             }
-            0x5B => { // absolute, Y
+            0x5B => {
+                // absolute, Y
                 let (addr, _) = self.addr_absolute_y(bus);
                 let value = bus.read(addr);
                 let shifted = self.lsr(value);
@@ -1369,7 +1477,8 @@ impl Cpu {
                 self.eor(shifted);
                 7
             }
-            0x5F => { // absolute, X
+            0x5F => {
+                // absolute, X
                 let (addr, _) = self.addr_absolute_x(bus);
                 let value = bus.read(addr);
                 let shifted = self.lsr(value);
@@ -1379,7 +1488,8 @@ impl Cpu {
             }
 
             // *RRA - ROR + ADC (Rotate Right then Add with Carry)
-            0x63 => { // (indirect, X)
+            0x63 => {
+                // (indirect, X)
                 let (addr, _) = self.addr_indirect_x(bus);
                 let value = bus.read(addr);
                 let rotated = self.ror(value);
@@ -1387,7 +1497,8 @@ impl Cpu {
                 self.adc(rotated);
                 8
             }
-            0x67 => { // zero page
+            0x67 => {
+                // zero page
                 let addr = self.addr_zero_page(bus);
                 let value = bus.read(addr);
                 let rotated = self.ror(value);
@@ -1395,7 +1506,8 @@ impl Cpu {
                 self.adc(rotated);
                 5
             }
-            0x6F => { // absolute
+            0x6F => {
+                // absolute
                 let addr = self.addr_absolute(bus);
                 let value = bus.read(addr);
                 let rotated = self.ror(value);
@@ -1403,7 +1515,8 @@ impl Cpu {
                 self.adc(rotated);
                 6
             }
-            0x73 => { // (indirect), Y
+            0x73 => {
+                // (indirect), Y
                 let (addr, _) = self.addr_indirect_y(bus);
                 let value = bus.read(addr);
                 let rotated = self.ror(value);
@@ -1411,7 +1524,8 @@ impl Cpu {
                 self.adc(rotated);
                 8
             }
-            0x77 => { // zero page, X
+            0x77 => {
+                // zero page, X
                 let addr = self.addr_zero_page_x(bus);
                 let value = bus.read(addr);
                 let rotated = self.ror(value);
@@ -1419,7 +1533,8 @@ impl Cpu {
                 self.adc(rotated);
                 6
             }
-            0x7B => { // absolute, Y
+            0x7B => {
+                // absolute, Y
                 let (addr, _) = self.addr_absolute_y(bus);
                 let value = bus.read(addr);
                 let rotated = self.ror(value);
@@ -1427,7 +1542,8 @@ impl Cpu {
                 self.adc(rotated);
                 7
             }
-            0x7F => { // absolute, X
+            0x7F => {
+                // absolute, X
                 let (addr, _) = self.addr_absolute_x(bus);
                 let value = bus.read(addr);
                 let rotated = self.ror(value);
@@ -1437,29 +1553,34 @@ impl Cpu {
             }
 
             // *SAX - Store A & X (AND A with X, store result)
-            0x83 => { // (indirect, X)
+            0x83 => {
+                // (indirect, X)
                 let (addr, _) = self.addr_indirect_x(bus);
                 bus.write(addr, self.a & self.x);
                 6
             }
-            0x87 => { // zero page
+            0x87 => {
+                // zero page
                 let addr = self.addr_zero_page(bus);
                 bus.write(addr, self.a & self.x);
                 3
             }
-            0x8F => { // absolute
+            0x8F => {
+                // absolute
                 let addr = self.addr_absolute(bus);
                 bus.write(addr, self.a & self.x);
                 4
             }
-            0x97 => { // zero page, Y
+            0x97 => {
+                // zero page, Y
                 let addr = self.addr_zero_page_y(bus);
                 bus.write(addr, self.a & self.x);
                 4
             }
 
             // *LAX - LDA + LDX (Load A and X with same value)
-            0xA3 => { // (indirect, X)
+            0xA3 => {
+                // (indirect, X)
                 let (addr, extra_cycle) = self.addr_indirect_x(bus);
                 let value = bus.read(addr);
                 self.a = value;
@@ -1467,7 +1588,8 @@ impl Cpu {
                 self.update_zero_negative(value);
                 6 + extra_cycle
             }
-            0xA7 => { // zero page
+            0xA7 => {
+                // zero page
                 let addr = self.addr_zero_page(bus);
                 let value = bus.read(addr);
                 self.a = value;
@@ -1475,14 +1597,16 @@ impl Cpu {
                 self.update_zero_negative(value);
                 3
             }
-            0xAB => { // immediate (unstable)
+            0xAB => {
+                // immediate (unstable)
                 let value = self.addr_immediate(bus);
                 self.a = value;
                 self.x = value;
                 self.update_zero_negative(value);
                 2
             }
-            0xAF => { // absolute
+            0xAF => {
+                // absolute
                 let addr = self.addr_absolute(bus);
                 let value = bus.read(addr);
                 self.a = value;
@@ -1490,7 +1614,8 @@ impl Cpu {
                 self.update_zero_negative(value);
                 4
             }
-            0xB3 => { // (indirect), Y
+            0xB3 => {
+                // (indirect), Y
                 let (addr, extra_cycle) = self.addr_indirect_y(bus);
                 let value = bus.read(addr);
                 self.a = value;
@@ -1498,7 +1623,8 @@ impl Cpu {
                 self.update_zero_negative(value);
                 5 + extra_cycle
             }
-            0xB7 => { // zero page, Y
+            0xB7 => {
+                // zero page, Y
                 let addr = self.addr_zero_page_y(bus);
                 let value = bus.read(addr);
                 self.a = value;
@@ -1506,7 +1632,8 @@ impl Cpu {
                 self.update_zero_negative(value);
                 4
             }
-            0xBF => { // absolute, Y
+            0xBF => {
+                // absolute, Y
                 let (addr, extra_cycle) = self.addr_absolute_y(bus);
                 let value = bus.read(addr);
                 self.a = value;
@@ -1516,49 +1643,56 @@ impl Cpu {
             }
 
             // *DCP - DEC + CMP (Decrement memory then Compare)
-            0xC3 => { // (indirect, X)
+            0xC3 => {
+                // (indirect, X)
                 let (addr, _) = self.addr_indirect_x(bus);
                 let value = bus.read(addr).wrapping_sub(1);
                 bus.write(addr, value);
                 self.cmp(value);
                 8
             }
-            0xC7 => { // zero page
+            0xC7 => {
+                // zero page
                 let addr = self.addr_zero_page(bus);
                 let value = bus.read(addr).wrapping_sub(1);
                 bus.write(addr, value);
                 self.cmp(value);
                 5
             }
-            0xCF => { // absolute
+            0xCF => {
+                // absolute
                 let addr = self.addr_absolute(bus);
                 let value = bus.read(addr).wrapping_sub(1);
                 bus.write(addr, value);
                 self.cmp(value);
                 6
             }
-            0xD3 => { // (indirect), Y
+            0xD3 => {
+                // (indirect), Y
                 let (addr, _) = self.addr_indirect_y(bus);
                 let value = bus.read(addr).wrapping_sub(1);
                 bus.write(addr, value);
                 self.cmp(value);
                 8
             }
-            0xD7 => { // zero page, X
+            0xD7 => {
+                // zero page, X
                 let addr = self.addr_zero_page_x(bus);
                 let value = bus.read(addr).wrapping_sub(1);
                 bus.write(addr, value);
                 self.cmp(value);
                 6
             }
-            0xDB => { // absolute, Y
+            0xDB => {
+                // absolute, Y
                 let (addr, _) = self.addr_absolute_y(bus);
                 let value = bus.read(addr).wrapping_sub(1);
                 bus.write(addr, value);
                 self.cmp(value);
                 7
             }
-            0xDF => { // absolute, X
+            0xDF => {
+                // absolute, X
                 let (addr, _) = self.addr_absolute_x(bus);
                 let value = bus.read(addr).wrapping_sub(1);
                 bus.write(addr, value);
@@ -1567,54 +1701,62 @@ impl Cpu {
             }
 
             // *ISB/ISC/INS - INC + SBC (Increment memory then Subtract)
-            0xE3 => { // (indirect, X)
+            0xE3 => {
+                // (indirect, X)
                 let (addr, _) = self.addr_indirect_x(bus);
                 let value = bus.read(addr).wrapping_add(1);
                 bus.write(addr, value);
                 self.sbc(value);
                 8
             }
-            0xE7 => { // zero page
+            0xE7 => {
+                // zero page
                 let addr = self.addr_zero_page(bus);
                 let value = bus.read(addr).wrapping_add(1);
                 bus.write(addr, value);
                 self.sbc(value);
                 5
             }
-            0xEB => { // immediate (same as SBC #imm, unofficial)
+            0xEB => {
+                // immediate (same as SBC #imm, unofficial)
                 let value = self.addr_immediate(bus);
                 self.sbc(value);
                 2
             }
-            0xEF => { // absolute
+            0xEF => {
+                // absolute
                 let addr = self.addr_absolute(bus);
                 let value = bus.read(addr).wrapping_add(1);
                 bus.write(addr, value);
                 self.sbc(value);
                 6
             }
-            0xF3 => { // (indirect), Y
+            0xF3 => {
+                // (indirect), Y
                 let (addr, _) = self.addr_indirect_y(bus);
                 let value = bus.read(addr).wrapping_add(1);
                 bus.write(addr, value);
                 self.sbc(value);
                 8
             }
-            0xF7 => { // zero page, X
+            0xF7 => {
+                // zero page, X
                 let addr = self.addr_zero_page_x(bus);
                 let value = bus.read(addr).wrapping_add(1);
                 bus.write(addr, value);
                 self.sbc(value);
                 6
             }
-            0xFB => { // absolute, Y
+            0xFB => {
+                // absolute, Y
                 let (addr, _) = self.addr_absolute_y(bus);
                 let value = bus.read(addr).wrapping_add(1);
                 bus.write(addr, value);
                 self.sbc(value);
                 7
             }
-            0xFF => { // absolute, X (THIS IS THE ZELDA OPCODE!)
+            0xFF => {
+                // absolute, X (THIS IS THE ZELDA OPCODE!)
                 let (addr, _) = self.addr_absolute_x(bus);
                 let value = bus.read(addr).wrapping_add(1);
                 bus.write(addr, value);
@@ -1660,35 +1802,45 @@ impl Cpu {
             }
 
             // *NOP variants (read and discard)
-            0x04 | 0x44 | 0x64 => { // zero page NOP
+            0x04 | 0x44 | 0x64 => {
+                // zero page NOP
                 let _ = self.addr_zero_page(bus);
                 3
             }
-            0x0C => { // absolute NOP
+            0x0C => {
+                // absolute NOP
                 let addr = self.addr_absolute(bus);
                 let _ = bus.read(addr);
                 4
             }
-            0x14 | 0x34 | 0x54 | 0x74 | 0xD4 | 0xF4 => { // zero page, X NOP
+            0x14 | 0x34 | 0x54 | 0x74 | 0xD4 | 0xF4 => {
+                // zero page, X NOP
                 let _ = self.addr_zero_page_x(bus);
                 4
             }
-            0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA => { // implied NOP
+            0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA => {
+                // implied NOP
                 2
             }
-            0x1C | 0x3C | 0x5C | 0x7C | 0xDC | 0xFC => { // absolute, X NOP
+            0x1C | 0x3C | 0x5C | 0x7C | 0xDC | 0xFC => {
+                // absolute, X NOP
                 let (addr, extra_cycle) = self.addr_absolute_x(bus);
                 let _ = bus.read(addr);
                 4 + extra_cycle
             }
-            0x80 | 0x82 | 0x89 | 0xC2 | 0xE2 => { // immediate NOP
+            0x80 | 0x82 | 0x89 | 0xC2 | 0xE2 => {
+                // immediate NOP
                 let _ = self.addr_immediate(bus);
                 2
             }
 
             _ => {
                 // Remaining illegal opcodes - treat as NOP but log
-                log::warn!("Unknown opcode: 0x{:02X} at PC 0x{:04X}", opcode, self.pc.wrapping_sub(1));
+                log::warn!(
+                    "Unknown opcode: 0x{:02X} at PC 0x{:04X}",
+                    opcode,
+                    self.pc.wrapping_sub(1)
+                );
                 2
             }
         }
@@ -1730,14 +1882,22 @@ impl Cpu {
     fn addr_absolute_x(&mut self, bus: &mut dyn CpuBus) -> (u16, u64) {
         let base = self.addr_absolute(bus);
         let addr = base.wrapping_add(self.x as u16);
-        let extra_cycle = if (base & 0xFF00) != (addr & 0xFF00) { 1 } else { 0 };
+        let extra_cycle = if (base & 0xFF00) != (addr & 0xFF00) {
+            1
+        } else {
+            0
+        };
         (addr, extra_cycle)
     }
 
     fn addr_absolute_y(&mut self, bus: &mut dyn CpuBus) -> (u16, u64) {
         let base = self.addr_absolute(bus);
         let addr = base.wrapping_add(self.y as u16);
-        let extra_cycle = if (base & 0xFF00) != (addr & 0xFF00) { 1 } else { 0 };
+        let extra_cycle = if (base & 0xFF00) != (addr & 0xFF00) {
+            1
+        } else {
+            0
+        };
         (addr, extra_cycle)
     }
 
@@ -1757,7 +1917,11 @@ impl Cpu {
         let high = bus.read((base + 1) & 0xFF) as u16;
         let indirect = (high << 8) | low;
         let addr = indirect.wrapping_add(self.y as u16);
-        let extra_cycle = if (indirect & 0xFF00) != (addr & 0xFF00) { 1 } else { 0 };
+        let extra_cycle = if (indirect & 0xFF00) != (addr & 0xFF00) {
+            1
+        } else {
+            0
+        };
         (addr, extra_cycle)
     }
 
@@ -1796,7 +1960,11 @@ impl Cpu {
             self.pc = self.pc.wrapping_add(1);
             let old_pc = self.pc;
             self.pc = self.pc.wrapping_add(offset as u16);
-            let extra_cycle = if (old_pc & 0xFF00) != (self.pc & 0xFF00) { 1 } else { 0 };
+            let extra_cycle = if (old_pc & 0xFF00) != (self.pc & 0xFF00) {
+                1
+            } else {
+                0
+            };
             3 + extra_cycle
         } else {
             self.pc = self.pc.wrapping_add(1);
