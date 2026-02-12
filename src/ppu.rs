@@ -622,10 +622,10 @@ impl Ppu {
             }
             
             // Sprite evaluation at cycle 320 (matching C reference EXACTLY)
-            // C code: diff = scanlines - OAM[Y], evaluates for CURRENT scanline
+            // C code: diff = scanlines - OAM[Y], evaluates for NEXT scanline
             // This cache is used for rendering on the NEXT scanline
             if self.cycle == 320 && (self.mask & 0x18) != 0 {
-                self.evaluate_sprites_for_scanline(self.scanline);
+                self.evaluate_sprites_for_scanline(self.scanline + 1);
             }
             
             // Background tile fetching for next scanline (cycles 321-336)
@@ -1074,6 +1074,8 @@ impl Ppu {
         // Called at cycle 320 of the PREVIOUS scanline
         // C code: int diff = (int)ppu->scanlines - ppu->OAM[i * 4];
         //         if(diff >= 0 && diff < range) { cache sprite }
+        // Note: NES sprites appear at OAM[Y] + 1, but the evaluation uses diff >= 0
+        // to match the C reference behavior (which includes the off-by-one)
         
         self.secondary_oam = [0xFF; 0x20];
         self.sprite_count = 0;
@@ -1088,6 +1090,9 @@ impl Ppu {
         for i in 0..64 {
             let y = self.oam[i * 4] as i32;
             // Check if sprite is visible on target scanline
+            // NES sprites appear at OAM[Y] + 1, so sprite at Y=100 appears at scanlines 101-108
+            // The evaluation uses diff >= 0 to match C reference, which effectively
+            // evaluates for scanline Y (one before the sprite actually appears)
             let diff = target_scanline - y;
             if diff >= 0 && diff < sprite_height {
                 if self.sprite_count < 8 {
