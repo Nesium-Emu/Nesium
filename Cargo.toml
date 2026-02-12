@@ -1,3 +1,8 @@
+[workspace]
+members = [
+    "nesium-android",
+]
+
 [package]
 name = "nesium"
 version = "0.1.0"
@@ -5,40 +10,50 @@ edition = "2021"
 description = "A high-accuracy NES emulator with a modern UI"
 authors = ["Nesium Team"]
 
-[dependencies]
-# GUI Framework
-eframe = { version = "0.31", features = ["persistence"] }
-egui = "0.31"
-egui_extras = { version = "0.31", features = ["image"] }
+[lib]
+name = "nesium"
+path = "src/lib.rs"
 
-# File dialogs
-rfd = "0.15"
-
-# Audio
-cpal = "0.15"
-
-# Serialization for settings
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-# Command line parsing
-clap = { version = "4.0", features = ["derive"] }
-
-# Logging
-log = "0.4"
-env_logger = "0.10"
-
-# Error handling
-thiserror = "1.0"
-
-# Directories for config storage
-dirs = "5.0"
-
-# Image processing (for thumbnails)
-image = "0.25"
+[[bin]]
+name = "nesium"
+path = "src/main.rs"
+required-features = ["desktop"]
 
 [features]
-default = []
+default = ["desktop"]
+desktop = [
+    "dep:eframe", "dep:egui", "dep:egui_extras",
+    "dep:rfd", "dep:cpal", "dep:clap", "dep:env_logger",
+    "dep:image", "dep:walkdir", "dep:zip", "dep:toml",
+    "dep:base64", "dep:reqwest", "dep:dirs",
+    "dep:serde", "dep:serde_json",
+]
+
+[dependencies]
+# Core (always available)
+log = "0.4"
+thiserror = "1.0"
+
+# Desktop-only (behind feature flag)
+eframe = { version = "0.31", features = ["persistence"], optional = true }
+egui = { version = "0.31", optional = true }
+egui_extras = { version = "0.31", features = ["image"], optional = true }
+rfd = { version = "0.15", optional = true }
+cpal = { version = "0.15", optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+clap = { version = "4.0", features = ["derive"], optional = true }
+env_logger = { version = "0.10", optional = true }
+image = { version = "0.25", optional = true }
+walkdir = { version = "2.4", optional = true }
+zip = { version = "0.6", optional = true }
+toml = { version = "0.8", optional = true }
+base64 = { version = "0.21", optional = true }
+reqwest = { version = "0.11", features = ["json", "blocking"], optional = true }
+dirs = { version = "5.0", optional = true }
+
+[build-dependencies]
+winres = "0.1"
 
 [profile.release]
 opt-level = 3

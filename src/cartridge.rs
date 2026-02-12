@@ -30,7 +30,7 @@ pub enum Mirroring {
     OneScreenUpper,
 }
 
-pub trait Mapper {
+pub trait Mapper: Send {
     fn cpu_read(&self, addr: u16, prg_rom: &[u8]) -> u8;
     fn cpu_write(&mut self, addr: u16, value: u8, prg_rom: &[u8], prg_ram: &mut [u8]);
     fn ppu_read(&self, addr: u16, chr_rom: &[u8], chr_ram: &[u8]) -> u8;
@@ -945,11 +945,20 @@ impl Mapper for Mmc3Mapper {
 }
 
 impl Cartridge {
+    /// Load a cartridge from raw bytes (for Android/embedded use)
+    pub fn load_from_bytes(data: Vec<u8>) -> Result<Self, CartridgeError> {
+        Self::parse_ines(data)
+    }
+
     pub fn load(path: &str) -> Result<Self, CartridgeError> {
         let mut file = File::open(path)?;
         let mut data = Vec::new();
         file.read_to_end(&mut data)?;
 
+        Self::parse_ines(data)
+    }
+
+    fn parse_ines(data: Vec<u8>) -> Result<Self, CartridgeError> {
         if data.len() < 16 {
             return Err(CartridgeError::InvalidHeader);
         }

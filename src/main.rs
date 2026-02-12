@@ -3,13 +3,20 @@
 //! This is the main entry point for the Nesium emulator.
 //! It supports both GUI mode (default) and CLI mode for testing.
 
-mod apu;
-mod cartridge;
-mod cpu;
-mod input;
-mod memory;
-mod ppu;
-mod trace;
+// Core emulation modules from the library crate
+// Re-exported so `crate::cpu`, `crate::ppu`, etc. still work in local modules
+pub use nesium::apu;
+pub use nesium::cartridge;
+pub use nesium::cpu;
+pub use nesium::input;
+pub use nesium::memory;
+pub use nesium::ppu;
+pub use nesium::trace;
+
+// Desktop-only modules
+mod artwork_scraper;
+mod config;
+mod rom_browser;
 mod ui;
 
 use clap::Parser;
@@ -88,9 +95,9 @@ fn main() -> eframe::Result<()> {
     )
 }
 
-/// Load the application icon from logo file or generate fallback
+/// Load the application icon from ICO/PNG file or generate fallback
 fn load_icon() -> egui::IconData {
-    // Try to load from PNG file first (preferred)
+    // Try to load from ICO or PNG file first (preferred)
     if let Ok(icon) = load_icon_from_file() {
         return icon;
     }
@@ -99,13 +106,16 @@ fn load_icon() -> egui::IconData {
     generate_icon_fallback()
 }
 
-/// Try to load icon from PNG file in resources directory
+/// Try to load icon from ICO or PNG file in resources directory
 fn load_icon_from_file() -> Result<egui::IconData, Box<dyn std::error::Error>> {
-    // Try multiple possible paths
+    // Try multiple possible paths, prioritizing the official ICO file
     let paths = [
+        "resources/NESIUM.ico",
         "resources/nesium-icon.png",
         "resources/nesium-logo-simple.png",
+        "../resources/NESIUM.ico",
         "../resources/nesium-icon.png",
+        "./resources/NESIUM.ico",
         "./resources/nesium-icon.png",
     ];
     
